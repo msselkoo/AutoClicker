@@ -1,0 +1,89 @@
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+print("===== DIAGNOSTYKA GEMÓW =====")
+
+-- 1. Leaderstats
+print("===== LEADERSTATS =====")
+local ls = player:FindFirstChild("leaderstats")
+if ls then
+    for _, v in ipairs(ls:GetChildren()) do
+        print("  " .. v.Name .. " (" .. v.ClassName .. ") = " .. tostring(v.Value))
+    end
+else
+    print("  brak leaderstats")
+end
+
+-- 2. Wszystkie ValueObjects w graczu z nazwami walut
+print("===== VALUEOBJECTS W GRACZU =====")
+local voFound = 0
+for _, inst in ipairs(player:GetDescendants()) do
+    if inst:IsA("IntValue") or inst:IsA("NumberValue") or inst:IsA("StringValue") then
+        local n = inst.Name:lower()
+        if n:find("gem") or n:find("coin") or n:find("candy") or n:find("fantasy") or n:find("cash") or n:find("money") or n:find("diamond") then
+            voFound = voFound + 1
+            print("  " .. inst:GetFullName() .. " = " .. tostring(inst.Value))
+        end
+    end
+end
+print("Znaleziono " .. voFound .. " ValueObjects")
+
+-- 3. GUI z dużymi liczbami (top bar)
+print("===== GUI Z CZYSTYMI LICZBAMI =====")
+local bigNums = 0
+if player:FindFirstChild("PlayerGui") then
+    for _, inst in ipairs(player.PlayerGui:GetDescendants()) do
+        if inst:IsA("TextLabel") or inst:IsA("TextButton") then
+            local txt = inst.Text
+            if txt and #txt > 0 and #txt < 30 then
+                local numOnly = txt:match("^[%d,%.]+$")
+                if numOnly and #numOnly >= 3 then
+                    bigNums = bigNums + 1
+                    print("  " .. inst:GetFullName() .. " => '" .. txt .. "' (visible: " .. tostring(inst.Visible) .. ")")
+                end
+            end
+        end
+    end
+end
+print("Znaleziono " .. bigNums .. " elementów z czystymi liczbami")
+
+-- 4. Foldery w graczu
+print("===== FOLDERY W GRACZU =====")
+for _, c in ipairs(player:GetChildren()) do
+    print("  " .. c.Name .. " (" .. c.ClassName .. ")")
+end
+
+-- 5. Atrybuty gracza
+print("===== ATRYBUTY GRACZA =====")
+for k, v in pairs(player:GetAttributes()) do
+    print("  " .. k .. " = " .. tostring(v))
+end
+
+-- 6. Atrybuty wszystkich instancji z 'gem'
+print("===== ATRYBUTY Z 'gem' W GRZE =====")
+local attrFound = 0
+for _, inst in ipairs(game:GetDescendants()) do
+    for attrName, attrVal in pairs(inst:GetAttributes()) do
+        if tostring(attrName):lower():find("gem") then
+            attrFound = attrFound + 1
+            print("  " .. inst:GetFullName() .. " :: " .. attrName .. " = " .. tostring(attrVal))
+        end
+    end
+end
+print("Atrybuty z 'gem': " .. attrFound)
+
+-- 7. ValueObjects w workspace z 'gem'
+print("===== WORKSPACE GEM VALUES =====")
+local wsFound = 0
+for _, inst in ipairs(workspace:GetDescendants()) do
+    if inst:IsA("IntValue") or inst:IsA("NumberValue") then
+        local n = inst.Name:lower()
+        if n:find("gem") then
+            wsFound = wsFound + 1
+            print("  " .. inst:GetFullName() .. " = " .. tostring(inst.Value))
+        end
+    end
+end
+print("Workspace gem values: " .. wsFound)
+
+print("===== KONIEC =====")
