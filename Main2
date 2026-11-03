@@ -1,4 +1,4 @@
--- FastClick v3.1 (naprawione) by stav - PSX Edition
+-- FastClick v3.2 (działający) by stav - PSX Edition
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
@@ -37,7 +37,6 @@ local function tween(obj, props, dur, style, dir)
     TweenService:Create(obj, TweenInfo.new(dur or 0.2, style or Enum.EasingStyle.Quart, dir or Enum.EasingDirection.Out), props):Play()
 end
 
--- Notifications
 local notifHolder = Instance.new("Frame")
 notifHolder.Name = "Notifs"
 notifHolder.BackgroundTransparency = 1
@@ -174,7 +173,6 @@ main.Parent = screenGui
 local mainCorner = Instance.new("UICorner"); mainCorner.CornerRadius = UDim.new(0, 12); mainCorner.Parent = main
 local mainStroke = Instance.new("UIStroke"); mainStroke.Color = C.border; mainStroke.Thickness = 1; mainStroke.Parent = main
 
--- Title bar
 local titleBar = Instance.new("Frame")
 titleBar.Name = "TitleBar"
 titleBar.BackgroundColor3 = C.card
@@ -214,7 +212,6 @@ closeBtn.Parent = titleBar
 local closeCorner = Instance.new("UICorner"); closeCorner.CornerRadius = UDim.new(0, 6); closeCorner.Parent = closeBtn
 closeBtn.MouseButton1Click:Connect(function() main.Visible = false end)
 
--- Content
 local content = Instance.new("Frame")
 content.BackgroundTransparency = 1
 content.Position = UDim2.new(0, 10, 0, 46)
@@ -438,7 +435,7 @@ y = y + 40
 local totalCard, totalVal = statCard(content, 0, y, 0.5, "CLICKS", "0", C.text)
 local diamondCard, diamondVal = statCard(content, 0.5, y, 0.5, "DIAMONDS", "0", C.cyan)
 y = y + 40
-local gemCard, gemVal = statCard(content, 0, y, 1, "GEMS", "0  (+0)", C.gold)
+local gemCard, gemVal = statCard(content, 0, y, 1, "GEMS EARNED", "0", C.gold)
 y = y + 44
 
 -- Destroy button
@@ -586,7 +583,7 @@ task.spawn(function()
     end
 end)
 
--- Gems init + update
+-- Gems init + update (licznik zdobytych gemów w sesji)
 task.spawn(function()
     task.wait(1.5)
     local val = getGems()
@@ -594,8 +591,8 @@ task.spawn(function()
         gemsCurrent = val
         gemsStart = val
         gemsGain = 0
-        gemVal.Text = formatNumber(val) .. "  (+0)"
-        notify("PSX", "Gems: " .. formatNumber(val), C.gold)
+        gemVal.Text = "0"
+        notify("PSX", "Gems tracking started: " .. formatNumber(val), C.gold)
     else
         gemVal.Text = "N/A"
         gemVal.TextColor3 = C.red
@@ -609,7 +606,13 @@ task.spawn(function()
             gemsCurrent = val
             if gemsStart == nil then gemsStart = val end
             gemsGain = val - (gemsStart or val)
-            gemVal.Text = formatNumber(val) .. "  (+" .. formatNumber(gemsGain) .. ")"
+            if gemsGain >= 0 then
+                gemVal.Text = "+" .. formatNumber(gemsGain)
+                gemVal.TextColor3 = C.gold
+            else
+                gemVal.Text = formatNumber(gemsGain)
+                gemVal.TextColor3 = C.red
+            end
         end
         task.wait(2)
     end
