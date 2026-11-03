@@ -1,9 +1,10 @@
--- FastClick (wlasne UI) by stav
+-- FastClick (wlasne UI) by stav - wersja PSX
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -16,7 +17,6 @@ screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = playerGui
 
--- Paleta: fiolet + czerń + szarość
 local C = {
     bg = Color3.fromRGB(15, 15, 20),
     bg2 = Color3.fromRGB(25, 20, 35),
@@ -29,9 +29,12 @@ local C = {
     textDim = Color3.fromRGB(160, 160, 180),
     green = Color3.fromRGB(80, 200, 120),
     red = Color3.fromRGB(220, 80, 90),
+    yellow = Color3.fromRGB(240, 200, 80),
+    gold = Color3.fromRGB(255, 215, 0),
+    cyan = Color3.fromRGB(80, 220, 220),
+    pink = Color3.fromRGB(255, 120, 180),
 }
 
--- Powiadomienia
 local notifHolder = Instance.new("Frame")
 notifHolder.Name = "Notifs"
 notifHolder.BackgroundTransparency = 1
@@ -96,13 +99,84 @@ local antiAfkEnabled = false
 local antiAfkInterval = 30
 local targetPos = Vector2.new(400, 300)
 
--- Główne okno (przeciągalne)
+local totalClicks = 0
+local clickTimestamps = {}
+local sessionStart = nil
+local sessionTime = 0
+
+-- Waluty PSX
+local currencyLabels = {} -- {name = label}
+local currencyStart = {}  -- wartosci startowe sesji
+local currencyCurrent = {} -- aktualne wartosci
+local currencyGain = {}    -- przyrost w sesji
+
+-- Funkcja szukajaca wartosci waluty w róznych miejscach
+local function findCurrencyValue(name)
+    -- 1. Leaderstats
+    local ls = player:FindFirstChild("leaderstats")
+    if ls then
+        local v = ls:FindFirstChild(name)
+        if v and (v:IsA("IntValue") or v:IsA("NumberValue")) then
+            return v.Value
+        end
+    end
+    -- 2. Atrybuty gracza
+    local attr = player:GetAttribute(name)
+    if attr ~= nil then
+        return attr
+    end
+    -- 3. Czeste lokalizacje w PSX
+    local paths = {
+        {"Data", name},
+        {"Stats", name},
+        {"Currencies", name},
+        {"PlayerData", name},
+        {"Currency", name},
+    }
+    for _, p in ipairs(paths) do
+        local cur = player
+        local ok = true
+        for _, part in ipairs(p) do
+            cur = cur:FindFirstChild(part)
+            if not cur then ok = false break end
+        end
+        if ok and cur and (cur:IsA("IntValue") or cur:IsA("NumberValue")) then
+            return cur.Value
+        end
+    end
+    -- 4. ReplicatedStorage / shared data (niektore gry trzymaja tam)
+    local shared = ReplicatedStorage:FindFirstChild("Shared")
+    if shared then
+        local v = shared:FindFirstChild(name)
+        if v and (v:IsA("IntValue") or v:IsA("NumberValue")) then
+            return v.Value
+        end
+    end
+    return nil
+end
+
+local function formatNumber(n)
+    if n == nil then return "N/A" end
+    n = math.floor(n)
+    if n >= 1e9 then
+        return string.format("%.2fB", n / 1e9)
+    elseif n >= 1e6 then
+        return string.format("%.2fM", n / 1e6)
+    elseif n >= 1e3 then
+        return string.format("%.1fK", n / 1e3)
+    else
+        return tostring(n)
+    end
+end
+
+local running = true
+
 local main = Instance.new("Frame")
 main.Name = "Main"
 main.BackgroundColor3 = C.bg
 main.BorderSizePixel = 0
-main.Position = UDim2.new(0.5, -160, 0.5, -180)
-main.Size = UDim2.new(0, 320, 0, 360)
+main.Position = UDim2.new(0.5, -180, 0.5, -260)
+main.Size = UDim2.new(0, 360, 0, 560)
 main.Active = true
 main.Draggable = true
 main.Parent = screenGui
@@ -118,7 +192,6 @@ mainGrad.Color = ColorSequence.new({ColorSequenceKeypoint.new(0, C.bg2), ColorSe
 mainGrad.Rotation = 135
 mainGrad.Parent = main
 
--- Pasek tytułu
 local titleBar = Instance.new("Frame")
 titleBar.Name = "TitleBar"
 titleBar.BackgroundColor3 = C.bg2
@@ -137,7 +210,7 @@ title.BackgroundTransparency = 1
 title.Position = UDim2.new(0, 12, 0, 0)
 title.Size = UDim2.new(1, -40, 1, 0)
 title.Font = Enum.Font.GothamBold
-title.Text = "FastClick"
+title.Text = "FastClick - PSX"
 title.TextColor3 = C.text
 title.TextSize = 16
 title.TextXAlignment = Enum.TextXAlignment.Left
@@ -157,7 +230,6 @@ closeCorner.CornerRadius = UDim.new(0, 6)
 closeCorner.Parent = closeBtn
 closeBtn.MouseButton1Click:Connect(function() main.Visible = false end)
 
--- Zawartość
 local content = Instance.new("Frame")
 content.BackgroundTransparency = 1
 content.Position = UDim2.new(0, 12, 0, 46)
@@ -262,14 +334,19 @@ local function updateStatus()
     statusLabel.TextColor3 = autoClicking and C.green or C.red
 end
 
--- Przycisk włączania
 makeButton(content, "Toggle AutoClicker", 26, function()
     autoClicking = not autoClicking
+    if autoClicking then
+        sessionStart = tick()
+        totalClicks = 0
+        clickTimestamps = {}
+    else
+        sessionStart = nil
+    end
     updateStatus()
     notify("AutoClicker", autoClicking and "AutoClicker is ON" or "AutoClicker is OFF", autoClicking and C.green or C.red)
 end, C.purple)
 
--- Prędkość
 makeLabel(content, "Speed (seconds):", 66, 18, C.textDim)
 local speedBox = Instance.new("TextBox")
 speedBox.BackgroundColor3 = C.gray
@@ -300,7 +377,6 @@ speedBox.FocusLost:Connect(function()
     end
 end)
 
--- Keybind
 makeLabel(content, "Toggle Key (click to change):", 124, 18, C.textDim)
 local keybindBtn = Instance.new("TextButton")
 keybindBtn.BackgroundColor3 = C.gray
@@ -321,7 +397,6 @@ keybindBtn.MouseButton1Click:Connect(function()
     keybindBtn.Text = "Press a key..."
 end)
 
--- Anti-AFK
 makeLabel(content, "Anti-AFK", 182, 18, C.textDim)
 makeToggle(content, "Enable Anti-AFK (A/D every few sec)", 202, function() return antiAfkEnabled end, function(v)
     antiAfkEnabled = v
@@ -353,6 +428,56 @@ afkBox.FocusLost:Connect(function()
         notify("Anti-AFK", "Invalid interval", C.red)
     end
 end)
+
+-- Licznik czasu i CPS
+makeLabel(content, "Session time: 0s", 300, 18, C.textDim)
+local sessionTimeLabel = nil
+for _, v in ipairs(content:GetChildren()) do
+    if v:IsA("TextLabel") and v.Text:find("Session time") then
+        sessionTimeLabel = v
+    end
+end
+
+makeLabel(content, "CPS: 0.0", 322, 18, C.textDim)
+local cpsLabel = nil
+for _, v in ipairs(content:GetChildren()) do
+    if v:IsA("TextLabel") and v.Text:find("CPS") then
+        cpsLabel = v
+    end
+end
+
+makeLabel(content, "Total clicks: 0", 344, 18, C.textDim)
+local totalLabel = nil
+for _, v in ipairs(content:GetChildren()) do
+    if v:IsA("TextLabel") and v.Text:find("Total clicks") then
+        totalLabel = v
+    end
+end
+
+-- Waluty PSX
+local yCur = 370
+local currencies = {
+    {name = "Fantasy Coins", color = C.gold, aliases = {"Fantasy Coins", "FantasyCoins", "Fantasy"}},
+    {name = "Gems", color = C.cyan, aliases = {"Gems", "Gem"}},
+    {name = "Candies", color = C.pink, aliases = {"Candies", "Candy", "Cukeirki", "Candie"}},
+}
+
+local currencyRows = {}
+for _, cur in ipairs(currencies) do
+    local lbl = makeLabel(content, cur.name .. ": 0  (gain: 0)", yCur, 18, cur.color, true)
+    currencyRows[cur.name] = {label = lbl, color = cur.color, aliases = cur.aliases}
+    yCur = yCur + 20
+end
+
+-- Przycisk Destroy
+makeButton(content, "Destroy AutoClicker", yCur + 6, function()
+    running = false
+    autoClicking = false
+    antiAfkEnabled = false
+    notify("FastClick", "Destroying...", C.red)
+    task.wait(0.5)
+    screenGui:Destroy()
+end, C.red)
 
 -- Przeciągany cel kliknięć
 local target = Instance.new("Frame")
@@ -389,7 +514,6 @@ RunService.RenderStepped:Connect(function()
     targetPos = pos
 end)
 
--- Obsługa klawiszy
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if waitingForKey and input.UserInputType == Enum.UserInputType.Keyboard then
@@ -401,6 +525,13 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
     if input.KeyCode == toggleKey then
         autoClicking = not autoClicking
+        if autoClicking then
+            sessionStart = tick()
+            totalClicks = 0
+            clickTimestamps = {}
+        else
+            sessionStart = nil
+        end
         updateStatus()
         notify("AutoClicker", autoClicking and "AutoClicker is ON" or "AutoClicker is OFF", autoClicking and C.green or C.red)
     end
@@ -409,14 +540,19 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- Pętla auto-klikania (klika w pozycji celu)
 task.spawn(function()
-    while true do
+    while running do
         if autoClicking then
             local x, y = targetPos.X, targetPos.Y
             VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
             task.wait()
             VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
+            totalClicks = totalClicks + 1
+            table.insert(clickTimestamps, tick())
+            local now = tick()
+            while #clickTimestamps > 0 and (now - clickTimestamps[1]) > 1 do
+                table.remove(clickTimestamps, 1)
+            end
             task.wait(clickSpeed)
         else
             task.wait(0.1)
@@ -424,9 +560,8 @@ task.spawn(function()
     end
 end)
 
--- Pętla Anti-AFK (naciska A i D co kilka sekund)
 task.spawn(function()
-    while true do
+    while running do
         if antiAfkEnabled then
             VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.A, false, game)
             task.wait(0.1)
@@ -439,6 +574,93 @@ task.spawn(function()
         else
             task.wait(0.5)
         end
+    end
+end)
+
+-- Inicjalizacja walut (pobierz wartosci startowe)
+task.spawn(function()
+    task.wait(2) -- poczekaj az gra zaladuje dane
+    for name, row in pairs(currencyRows) do
+        local val = nil
+        for _, alias in ipairs(row.aliases) do
+            val = findCurrencyValue(alias)
+            if val ~= nil then break end
+        end
+        currencyCurrent[name] = val
+        currencyStart[name] = val
+        currencyGain[name] = 0
+        if val ~= nil then
+            row.label.Text = name .. ": " .. formatNumber(val) .. "  (gain: 0)"
+        else
+            row.label.Text = name .. ": N/A  (not found)"
+            row.label.TextColor3 = C.red
+        end
+    end
+    notify("PSX", "Currency tracking started", C.gold)
+end)
+
+-- Petla aktualizacji walut
+task.spawn(function()
+    while running do
+        for name, row in pairs(currencyRows) do
+            local val = nil
+            for _, alias in ipairs(row.aliases) do
+                val = findCurrencyValue(alias)
+                if val ~= nil then break end
+            end
+            if val ~= nil then
+                currencyCurrent[name] = val
+                if currencyStart[name] == nil then
+                    currencyStart[name] = val
+                end
+                currencyGain[name] = val - (currencyStart[name] or val)
+                row.label.Text = name .. ": " .. formatNumber(val) .. "  (+" .. formatNumber(currencyGain[name]) .. ")"
+                row.label.TextColor3 = row.color
+            end
+        end
+        task.wait(1)
+    end
+end)
+
+task.spawn(function()
+    while running do
+        if autoClicking and sessionStart then
+            sessionTime = tick() - sessionStart
+            local mins = math.floor(sessionTime / 60)
+            local secs = math.floor(sessionTime % 60)
+            local timeStr = string.format("%dm %ds", mins, secs)
+            if sessionTimeLabel then
+                sessionTimeLabel.Text = "Session time: " .. timeStr
+                sessionTimeLabel.TextColor3 = C.yellow
+            end
+            local now = tick()
+            while #clickTimestamps > 0 and (now - clickTimestamps[1]) > 1 do
+                table.remove(clickTimestamps, 1)
+            end
+            local cps = #clickTimestamps
+            if cpsLabel then
+                cpsLabel.Text = string.format("CPS: %.1f", cps)
+                cpsLabel.TextColor3 = C.purpleLight
+            end
+            if totalLabel then
+                totalLabel.Text = "Total clicks: " .. totalClicks
+                totalLabel.TextColor3 = C.text
+            end
+        else
+            if sessionTimeLabel then
+                sessionTimeLabel.Text = "Session time: 0s"
+                sessionTimeLabel.TextColor3 = C.textDim
+            end
+            if cpsLabel then
+                cpsLabel.Text = "CPS: 0.0"
+                cpsLabel.TextColor3 = C.textDim
+            end
+            if totalLabel then
+                totalLabel.Text = "Total clicks: " .. totalClicks
+                totalLabel.TextColor3 = C.textDim
+            end
+        end
+        task.wait(0.1)
     end
 end)
 
