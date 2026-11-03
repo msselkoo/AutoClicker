@@ -1,4 +1,4 @@
--- FastClick v3.7 (akumulowany przyrost) by stav - PSX Edition
+-- FastClick v3.8 (naprawione liczniki) by stav - PSX Edition
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
@@ -153,7 +153,7 @@ main.Name = "Main"
 main.BackgroundColor3 = C.bg
 main.BorderSizePixel = 0
 main.Position = UDim2.new(0.5, -180, 0.5, -280)
-main.Size = UDim2.new(0, 360, 0, 560)
+main.Size = UDim2.new(0, 360, 0, 520)
 main.Active = true
 main.Draggable = true
 main.ClipsDescendants = true
@@ -384,7 +384,7 @@ afkBox.FocusLost:Connect(function()
 end)
 y = y + 34
 
--- Stats
+-- Stats (3 karty: Session, CPS, Clicks)
 local function statCard(parent, x, y, w, label, value, color)
     local c = Instance.new("Frame")
     c.BackgroundColor3 = C.card
@@ -417,11 +417,9 @@ local function statCard(parent, x, y, w, label, value, color)
     return c, val
 end
 
-local sessionCard, sessionVal = statCard(content, 0, y, 0.5, "SESSION", "0s", C.yellow)
-local cpsCard, cpsVal = statCard(content, 0.5, y, 0.5, "CPS", "0.0", C.purpleLight)
-y = y + 40
-local totalCard, totalVal = statCard(content, 0, y, 0.5, "CLICKS", "0", C.text)
-local diamondCard, diamondVal = statCard(content, 0.5, y, 0.5, "DIAMONDS", "0", C.cyan)
+local sessionCard, sessionVal = statCard(content, 0, y, 0.33, "SESSION", "0s", C.yellow)
+local cpsCard, cpsVal = statCard(content, 0.33, y, 0.33, "CPS", "0.0", C.purpleLight)
+local clicksCard, clicksVal = statCard(content, 0.66, y, 0.34, "CLICKS", "0", C.text)
 y = y + 40
 
 -- Waluty PSX (karty z akumulowanym przyrostem)
@@ -457,7 +455,7 @@ local function currencyCard(parent, y, name, icon, color)
     val.TextXAlignment = Enum.TextXAlignment.Left
     val.TextWrapped = false
     val.Parent = c
-    -- ZAWSZE WIDOCZNY przyrost (akumulowany, nie resetuje się)
+    -- ZAWSZE WIDOCZNY przyrost (akumulowany)
     local inc = Instance.new("TextLabel")
     inc.BackgroundTransparency = 1
     inc.Position = UDim2.new(0, 38, 0, 32)
@@ -594,22 +592,9 @@ task.spawn(function()
     end
 end)
 
--- Śledzenie walut z AKUMULACJĄ (suma rośnie, nie resetuje się)
+-- Śledzenie walut z AKUMULACJĄ
 local lastValues = {}
-local accumulatedGain = {} -- akumulowany przyrost od startu
-
-local function showIncrement(incLabel, diff)
-    if diff > 0 then
-        incLabel.Text = "+" .. formatNumber(diff)
-        incLabel.TextColor3 = C.green
-    elseif diff < 0 then
-        incLabel.Text = formatNumber(diff)
-        incLabel.TextColor3 = C.red
-    end
-    tween(incLabel, {TextSize = 13}, 0.15)
-    task.wait(0.15)
-    tween(incLabel, {TextSize = 11}, 0.3)
-end
+local accumulatedGain = {}
 
 local function trackCurrency(cfg, valLabel, incLabel)
     local val = getCurrencyValue(cfg.path)
@@ -617,12 +602,10 @@ local function trackCurrency(cfg, valLabel, incLabel)
         if lastValues[cfg.name] ~= nil then
             local diff = val - lastValues[cfg.name]
             if diff ~= 0 then
-                -- Akumuluj przyrost (suma rośnie)
                 if not accumulatedGain[cfg.name] then
                     accumulatedGain[cfg.name] = 0
                 end
                 accumulatedGain[cfg.name] = accumulatedGain[cfg.name] + diff
-                -- Pokaż akumulowany przyrost (rośnie z każdym dodatkiem)
                 local totalGain = accumulatedGain[cfg.name]
                 if totalGain > 0 then
                     incLabel.Text = "+" .. formatNumber(totalGain)
@@ -634,7 +617,6 @@ local function trackCurrency(cfg, valLabel, incLabel)
                     incLabel.Text = "+0"
                     incLabel.TextColor3 = C.textMuted
                 end
-                -- Animacja powiększenia przy zmianie
                 tween(incLabel, {TextSize = 13}, 0.15)
                 task.wait(0.15)
                 tween(incLabel, {TextSize = 11}, 0.3)
@@ -649,7 +631,7 @@ local function trackCurrency(cfg, valLabel, incLabel)
     end
 end
 
--- Inicjalizacja walut (ustaw startowe wartości, zeruj akumulację)
+-- Inicjalizacja walut
 task.spawn(function()
     task.wait(2)
     for _, cfg in ipairs(currencies) do
@@ -682,7 +664,7 @@ task.spawn(function()
     end
 end)
 
--- UI update loop
+-- UI update loop (naprawiony - session clicks, CPS działają)
 task.spawn(function()
     while running do
         if autoClicking and sessionStart then
@@ -699,14 +681,11 @@ task.spawn(function()
                 table.remove(clickTimestamps, 1)
             end
             cpsVal.Text = string.format("%.1f", #clickTimestamps)
-            totalVal.Text = tostring(totalClicks)
-            -- Diamonds w stat card (pełna liczba)
-            local d = getDiamonds() or 0
-            diamondVal.Text = formatNumber(d)
+            clicksVal.Text = tostring(totalClicks)
         else
             sessionVal.Text = "0s"
             cpsVal.Text = "0.0"
-            totalVal.Text = tostring(totalClicks)
+            clicksVal.Text = tostring(totalClicks)
         end
         task.wait(0.1)
     end
@@ -715,6 +694,6 @@ end)
 -- Entrance animation
 main.Size = UDim2.new(0, 0, 0, 0)
 main.Position = UDim2.new(0.5, 0, 0.5, 0)
-tween(main, {Size = UDim2.new(0, 360, 0, 560), Position = UDim2.new(0.5, -180, 0.5, -280)}, 0.4, Enum.EasingStyle.Back)
+tween(main, {Size = UDim2.new(0, 360, 0, 520), Position = UDim2.new(0.5, -180, 0.5, -260)}, 0.4, Enum.EasingStyle.Back)
 
 notify("FastClick", "PSX currencies tracking loaded", C.purpleLight)
