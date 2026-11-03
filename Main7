@@ -1,4 +1,4 @@
--- FastClick v3.6 (zawsze widoczny przyrost) by stav - PSX Edition
+-- FastClick v3.7 (akumulowany przyrost) by stav - PSX Edition
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
@@ -424,7 +424,7 @@ local totalCard, totalVal = statCard(content, 0, y, 0.5, "CLICKS", "0", C.text)
 local diamondCard, diamondVal = statCard(content, 0.5, y, 0.5, "DIAMONDS", "0", C.cyan)
 y = y + 40
 
--- Waluty PSX (karty z PEŁNYMI LICZBAMI i ZAWSZE WIDOCZNYM przyrostem)
+-- Waluty PSX (karty z akumulowanym przyrostem)
 local function currencyCard(parent, y, name, icon, color)
     local c = card(parent, y, 52, C.card)
     local iconLbl = Instance.new("TextLabel")
@@ -449,7 +449,7 @@ local function currencyCard(parent, y, name, icon, color)
     local val = Instance.new("TextLabel")
     val.BackgroundTransparency = 1
     val.Position = UDim2.new(0, 38, 0, 16)
-    val.Size = UDim2.new(1, -52, 0, 16)
+    val.Size = UDim2.new(1, -52, 0, 14)
     val.Font = Enum.Font.GothamBold
     val.Text = "0"
     val.TextColor3 = color
@@ -457,7 +457,7 @@ local function currencyCard(parent, y, name, icon, color)
     val.TextXAlignment = Enum.TextXAlignment.Left
     val.TextWrapped = false
     val.Parent = c
-    -- ZAWSZE WIDOCZNY przyrost (nie znika)
+    -- ZAWSZE WIDOCZNY przyrost (akumulowany, nie resetuje się)
     local inc = Instance.new("TextLabel")
     inc.BackgroundTransparency = 1
     inc.Position = UDim2.new(0, 38, 0, 32)
@@ -594,26 +594,22 @@ task.spawn(function()
     end
 end)
 
--- Funkcja pokazująca przyrost (ZAWSZE WIDOCZNY, nie znika)
-local function updateIncrement(incLabel, diff)
+-- Śledzenie walut z AKUMULACJĄ (suma rośnie, nie resetuje się)
+local lastValues = {}
+local accumulatedGain = {} -- akumulowany przyrost od startu
+
+local function showIncrement(incLabel, diff)
     if diff > 0 then
         incLabel.Text = "+" .. formatNumber(diff)
         incLabel.TextColor3 = C.green
     elseif diff < 0 then
         incLabel.Text = formatNumber(diff)
         incLabel.TextColor3 = C.red
-    else
-        incLabel.Text = "+0"
-        incLabel.TextColor3 = C.textMuted
     end
-    -- Animacja: krótkie powiększenie
     tween(incLabel, {TextSize = 13}, 0.15)
     task.wait(0.15)
     tween(incLabel, {TextSize = 11}, 0.3)
 end
-
--- Śledzenie walut
-local lastValues = {}
 
 local function trackCurrency(cfg, valLabel, incLabel)
     local val = getCurrencyValue(cfg.path)
@@ -621,7 +617,27 @@ local function trackCurrency(cfg, valLabel, incLabel)
         if lastValues[cfg.name] ~= nil then
             local diff = val - lastValues[cfg.name]
             if diff ~= 0 then
-                updateIncrement(incLabel, diff)
+                -- Akumuluj przyrost (suma rośnie)
+                if not accumulatedGain[cfg.name] then
+                    accumulatedGain[cfg.name] = 0
+                end
+                accumulatedGain[cfg.name] = accumulatedGain[cfg.name] + diff
+                -- Pokaż akumulowany przyrost (rośnie z każdym dodatkiem)
+                local totalGain = accumulatedGain[cfg.name]
+                if totalGain > 0 then
+                    incLabel.Text = "+" .. formatNumber(totalGain)
+                    incLabel.TextColor3 = C.green
+                elseif totalGain < 0 then
+                    incLabel.Text = formatNumber(totalGain)
+                    incLabel.TextColor3 = C.red
+                else
+                    incLabel.Text = "+0"
+                    incLabel.TextColor3 = C.textMuted
+                end
+                -- Animacja powiększenia przy zmianie
+                tween(incLabel, {TextSize = 13}, 0.15)
+                task.wait(0.15)
+                tween(incLabel, {TextSize = 11}, 0.3)
             end
         end
         lastValues[cfg.name] = val
@@ -633,13 +649,14 @@ local function trackCurrency(cfg, valLabel, incLabel)
     end
 end
 
--- Inicjalizacja walut
+-- Inicjalizacja walut (ustaw startowe wartości, zeruj akumulację)
 task.spawn(function()
     task.wait(2)
     for _, cfg in ipairs(currencies) do
         local val = getCurrencyValue(cfg.path)
         if val ~= nil then
             lastValues[cfg.name] = val
+            accumulatedGain[cfg.name] = 0
             notify("PSX", cfg.icon .. " " .. cfg.name .. ": " .. formatNumber(val), cfg.color)
         end
     end
