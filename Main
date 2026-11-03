@@ -1,0 +1,109 @@
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+print("===== SZERSZE SZUKANIE W GC =====")
+local gc = getgc and getgc(true) or {}
+local foundTables = 0
+
+-- Szukaj tabel zawierających "Diamonds" jako klucz (niezależnie od wartości)
+for i, v in ipairs(gc) do
+    if type(v) == "table" then
+        local hasDiamonds = false
+        local hasCoins = false
+        local hasCandy = false
+        local keys = {}
+        for k, val in pairs(v) do
+            local kn = tostring(k):lower()
+            if kn == "diamonds" then hasDiamonds = true end
+            if kn == "coins" or kn == "fantasycoins" or kn == "fantasy coins" then hasCoins = true end
+            if kn == "candies" or kn == "halloweencandy" or kn == "halloween candy" or kn == "candy" then hasCandy = true end
+            table.insert(keys, tostring(k))
+        end
+        -- Jeśli tabela ma "diamonds" i przynajmniej jedną inną walutę
+        if hasDiamonds and (hasCoins or hasCandy) then
+            foundTables = foundTables + 1
+            print("  [GC#" .. i .. "] ZNALEZIONO tabele z walutami!")
+            for k, val in pairs(v) do
+                if type(val) == "number" or type(val) == "string" then
+                    print("      " .. tostring(k) .. " = " .. tostring(val))
+                end
+            end
+            if foundTables >= 3 then break end
+        end
+    end
+end
+print("Znaleziono " .. foundTables .. " tabel z wieloma walutami")
+
+-- Szukaj tabel które mają "Diamonds" i wartość odpowiadającą leaderstats
+print("===== SZUKANIE TABEL Z DIAMONDS = leaderstats =====")
+local leaderDiamonds = player.leaderstats and player.leaderstats:FindFirstChild("Diamonds")
+local leaderVal = leaderDiamonds and leaderDiamonds.Value or nil
+print("Leaderstats Diamonds = " .. tostring(leaderVal))
+
+local foundMatch = 0
+for i, v in ipairs(gc) do
+    if type(v) == "table" then
+        for k, val in pairs(v) do
+            if tostring(k):lower() == "diamonds" and type(val) == "number" and val == leaderVal then
+                foundMatch = foundMatch + 1
+                print("  [GC#" .. i .. "] Znaleziono tabelę z Diamonds=" .. val)
+                -- wypisz wszystkie klucze
+                local keyList = {}
+                for k2, v2 in pairs(v) do
+                    if type(v2) == "number" or type(v2) == "string" or type(v2) == "boolean" then
+                        table.insert(keyList, tostring(k2) .. "=" .. tostring(v2))
+                    end
+                end
+                print("      " .. table.concat(keyList, ", "))
+                if foundMatch >= 5 then break end
+            end
+        end
+        if foundMatch >= 5 then break end
+    end
+end
+print("Znaleziono " .. foundMatch .. " pasujących tabel")
+
+-- Szukaj w getgc bez true (tylko funkcje) - upvalues
+print("===== SZUKANIE W UPVALUES FUNKCJI =====")
+local gcFuncs = getgc and getgc(false) or {}
+local upvalFound = 0
+for i, v in ipairs(gcFuncs) do
+    if type(v) == "function" then
+        local ok, env = pcall(getfenv, v)
+        if ok and type(env) == "table" then
+            -- sprawdz czy funkcja ma upvalues z walutami
+            local info = debug.getinfo and debug.getinfo(v) or nil
+            if info and info.name then
+                local name = tostring(info.name):lower()
+                if name:find("save") or name:find("currency") or name:find("coin") or name:find("diamond") or name:find("candy") then
+                    upvalFound = upvalFound + 1
+                    print("  [FUNC] " .. tostring(info.name) .. " (source: " .. tostring(info.source):sub(1, 60) .. ")")
+                    -- wypisz upvalues
+                    if debug.getupvalues then
+                        local ups = debug.getupvalues(v)
+                        for j, u in ipairs(ups) do
+                            if type(u) == "table" then
+                                local hasD = false
+                                for k, val in pairs(u) do
+                                    if tostring(k):lower() == "diamonds" then hasD = true end
+                                end
+                                if hasD then
+                                    print("      UPVALUE#" .. j .. " ma Diamonds!")
+                                    for k, val in pairs(u) do
+                                        if type(val) == "number" or type(val) == "string" then
+                                            print("        " .. tostring(k) .. " = " .. tostring(val))
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    if upvalFound >= 10 then break end
+                end
+            end
+        end
+    end
+end
+print("Znaleziono " .. upvalFound .. " funkcji związanych z walutami")
+
+print("===== KONIEC =====")
