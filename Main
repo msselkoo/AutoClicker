@@ -1,89 +1,50 @@
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 
-print("===== PRÓBA 1: getrenv()._G =====")
-local renv = getrenv and getrenv() or nil
-if renv then
-    print("getrenv OK")
-    for k, v in pairs(renv) do
-        if type(v) == "table" then
-            local name = tostring(k):lower()
-            if name:find("save") or name:find("data") or name:find("currency") then
-                print("  _G klucz: " .. k .. " (" .. type(v) .. ")")
-            end
-        end
-    end
-    -- sprawdz _G
-    if renv._G then
-        for k, v in pairs(renv._G) do
-            local name = tostring(k):lower()
-            if name:find("save") or name:find("data") or name:find("currency") or name:find("coin") or name:find("diamond") or name:find("candy") then
-                print("  _G." .. k .. " = " .. type(v) .. " : " .. tostring(v))
-            end
-        end
-    end
-else
-    print("getrenv niedostępne")
-end
-
-print("===== PRÓBA 2: getgc() szukanie tabel z walutami =====")
-local gc = getgc and getgc() or {}
+print("===== SZUKANIE W CAŁEJ GRZE =====")
+local targets = {"fantasy", "candy", "halloween", "coin"}
 local found = 0
-for i, v in ipairs(gc) do
-    if type(v) == "table" then
-        -- szukaj tabel zawierających klucze walut
-        for k, val in pairs(v) do
-            local kn = tostring(k):lower()
-            if (kn == "diamonds" or kn == "fantasy coins" or kn == "fantasycoins" or kn == "halloween candy" or kn == "halloweencandy" or kn == "coins") and type(val) == "number" then
+for _, inst in ipairs(game:GetDescendants()) do
+    if inst:IsA("IntValue") or inst:IsA("NumberValue") then
+        local n = inst.Name:lower()
+        for _, t in ipairs(targets) do
+            if n:find(t, 1, true) then
                 found = found + 1
-                print("  [GC#" .. i .. "] " .. tostring(k) .. " = " .. tostring(val))
-                -- wypisz inne klucze tej tabeli
-                print("     inne klucze:")
-                local cnt = 0
-                for k2, v2 in pairs(v) do
-                    if type(v2) == "number" or type(v2) == "string" then
-                        print("       " .. tostring(k2) .. " = " .. tostring(v2))
-                        cnt = cnt + 1
-                        if cnt > 20 then print("       ... (więcej)"); break end
-                    end
+                -- sprawdz czy to faktycznie waluta (duza wartosc)
+                if inst.Value > 0 then
+                    print("  [VAL] " .. inst:GetFullName() .. " = " .. tostring(inst.Value))
                 end
-                break
             end
         end
-        if found >= 5 then break end
     end
-end
-print("Znaleziono " .. found .. " tabel z walutami")
-
-print("===== PRÓBA 3: szukanie przez debug.getupvalue w skryptach gry =====")
--- Spróbuj znaleźć Save w skryptach gracza
-local scripts = {}
-for _, v in ipairs(player.PlayerScripts:GetDescendants()) do
-    if v:IsA("LocalScript") then table.insert(scripts, v) end
-end
-print("Liczba LocalScriptów: " .. #scripts)
-
-print("===== PRÓBA 4: shared table (_G w grze) =====")
--- PSX często trzyma save w shared/_G
-pcall(function()
-    for k, v in pairs(shared) do
-        print("  shared." .. tostring(k) .. " = " .. type(v))
-    end
-end)
-
-print("===== PRÓBA 5: getfenv z skryptu Save =====")
--- Spróbuj wywołać funkcje z modułu Save przez jego własne środowisko
-local saveMod = ReplicatedStorage:FindFirstChild("Library") and ReplicatedStorage.Library:FindFirstChild("Client") and ReplicatedStorage.Library.Client:FindFirstChild("Save")
-if saveMod then
-    -- Spróbuj uzyskać środowisko modułu
-    local ok, env = pcall(getfenv, saveMod)
-    print("getfenv ok=" .. tostring(ok) .. " typ=" .. type(env))
-    if ok and type(env) == "table" then
-        for k, v in pairs(env) do
-            print("  env." .. tostring(k) .. " = " .. type(v))
+    -- atrybuty
+    if inst:GetAttributes() then
+        for attrName, attrVal in pairs(inst:GetAttributes()) do
+            local an = tostring(attrName):lower()
+            for _, t in ipairs(targets) do
+                if an:find(t, 1, true) and type(attrVal) == "number" then
+                    found = found + 1
+                    print("  [ATTR] " .. inst:GetFullName() .. " :: " .. attrName .. " = " .. tostring(attrVal))
+                end
+            end
         end
     end
+end
+print("Znaleziono " .. found .. " pasujących instancji")
+
+print("===== SZUKANIE StringValue z danymi =====")
+for _, inst in ipairs(game:GetDescendants()) do
+    if inst:IsA("StringValue") then
+        local v = inst.Value
+        if v:find("Fantasy") or v:find("Candy") or v:find("Diamond") then
+            print("  " .. inst:GetFullName() .. " = " .. v:sub(1, 100))
+        end
+    end
+end
+
+print("===== FOLDERY W WORKSPACE =====")
+for _, c in ipairs(workspace:GetChildren()) do
+    print("  " .. c.Name .. " (" .. c.ClassName .. ")")
 end
 
 print("===== KONIEC =====")
