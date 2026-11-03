@@ -1,4 +1,4 @@
--- FastClick v3.4 (PSX currencies) by stav
+-- FastClick v3.6 (zawsze widoczny przyrost) by stav - PSX Edition
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
@@ -113,7 +113,7 @@ local currencies = {
     {name = "Diamonds", path = "Main.Right.Diamonds", color = C.cyan, icon = "💎"},
 }
 
-local currencyData = {} -- {name = {start, current, gain, label, incLabel}}
+local currencyData = {}
 
 local function formatNumber(n)
     if n == nil then return "N/A" end
@@ -128,24 +128,18 @@ local function formatNumber(n)
         end
     end
     if n < 0 then formatted = "-" .. formatted end
-    if math.abs(n) >= 1e9 then return string.format("%.2fB", n / 1e9)
-    elseif math.abs(n) >= 1e6 then return string.format("%.2fM", n / 1e6)
-    elseif math.abs(n) >= 1e3 then return formatted
-    else return s end
+    return formatted
 end
 
 local function getCurrencyValue(path)
-    -- Szukaj w PlayerGui po ścieżce
     local cur = playerGui
     for part in path:gmatch("[^%.]+") do
         cur = cur:FindFirstChild(part)
         if not cur then return nil end
     end
-    -- Znajdź Amount label (odometerGUIFX jest widoczny)
     local amountLabel = cur:FindFirstChild("Amount_odometerGUIFX") or cur:FindFirstChild("Amount")
     if amountLabel and amountLabel:IsA("TextLabel") then
         local txt = amountLabel.Text
-        -- Usuń spacje i przecinki
         local numStr = txt:gsub("%s", ""):gsub(",", "")
         local num = tonumber(numStr)
         if num then return num end
@@ -158,8 +152,8 @@ local main = Instance.new("Frame")
 main.Name = "Main"
 main.BackgroundColor3 = C.bg
 main.BorderSizePixel = 0
-main.Position = UDim2.new(0.5, -160, 0.5, -280)
-main.Size = UDim2.new(0, 320, 0, 560)
+main.Position = UDim2.new(0.5, -180, 0.5, -280)
+main.Size = UDim2.new(0, 360, 0, 560)
 main.Active = true
 main.Draggable = true
 main.ClipsDescendants = true
@@ -430,9 +424,9 @@ local totalCard, totalVal = statCard(content, 0, y, 0.5, "CLICKS", "0", C.text)
 local diamondCard, diamondVal = statCard(content, 0.5, y, 0.5, "DIAMONDS", "0", C.cyan)
 y = y + 40
 
--- Waluty PSX (3 karty z przyrostem)
+-- Waluty PSX (karty z PEŁNYMI LICZBAMI i ZAWSZE WIDOCZNYM przyrostem)
 local function currencyCard(parent, y, name, icon, color)
-    local c = card(parent, y, 40, C.card)
+    local c = card(parent, y, 52, C.card)
     local iconLbl = Instance.new("TextLabel")
     iconLbl.BackgroundTransparency = 1
     iconLbl.Position = UDim2.new(0, 10, 0, 0)
@@ -445,7 +439,7 @@ local function currencyCard(parent, y, name, icon, color)
     local lbl = Instance.new("TextLabel")
     lbl.BackgroundTransparency = 1
     lbl.Position = UDim2.new(0, 38, 0, 2)
-    lbl.Size = UDim2.new(0.5, -38, 0, 14)
+    lbl.Size = UDim2.new(1, -52, 0, 14)
     lbl.Font = Enum.Font.Gotham
     lbl.Text = name:upper()
     lbl.TextColor3 = C.textMuted
@@ -455,32 +449,34 @@ local function currencyCard(parent, y, name, icon, color)
     local val = Instance.new("TextLabel")
     val.BackgroundTransparency = 1
     val.Position = UDim2.new(0, 38, 0, 16)
-    val.Size = UDim2.new(0.5, -38, 0, 18)
+    val.Size = UDim2.new(1, -52, 0, 16)
     val.Font = Enum.Font.GothamBold
     val.Text = "0"
     val.TextColor3 = color
-    val.TextSize = 13
+    val.TextSize = 12
     val.TextXAlignment = Enum.TextXAlignment.Left
+    val.TextWrapped = false
     val.Parent = c
+    -- ZAWSZE WIDOCZNY przyrost (nie znika)
     local inc = Instance.new("TextLabel")
     inc.BackgroundTransparency = 1
-    inc.Position = UDim2.new(0.5, 4, 0, 0)
-    inc.Size = UDim2.new(0.5, -14, 1, 0)
+    inc.Position = UDim2.new(0, 38, 0, 32)
+    inc.Size = UDim2.new(1, -52, 0, 14)
     inc.Font = Enum.Font.GothamBold
-    inc.Text = ""
+    inc.Text = "+0"
     inc.TextColor3 = C.green
-    inc.TextSize = 14
-    inc.TextXAlignment = Enum.TextXAlignment.Right
+    inc.TextSize = 11
+    inc.TextXAlignment = Enum.TextXAlignment.Left
     inc.Parent = c
     return c, val, inc
 end
 
 local fcCard, fcVal, fcInc = currencyCard(content, y, "Fantasy Coins", "🪙", C.gold)
-y = y + 44
+y = y + 56
 local hcCard, hcVal, hcInc = currencyCard(content, y, "Halloween Candy", "🍬", C.orange)
-y = y + 44
+y = y + 56
 local dmCard, dmVal, dmInc = currencyCard(content, y, "Diamonds", "💎", C.cyan)
-y = y + 44
+y = y + 56
 
 -- Destroy button
 local destroyBtn = Instance.new("TextButton")
@@ -598,53 +594,37 @@ task.spawn(function()
     end
 end)
 
--- Funkcja pokazująca przyrost z animacją
-local function showIncrement(incLabel, diff, color)
-    if diff == 0 then return end
+-- Funkcja pokazująca przyrost (ZAWSZE WIDOCZNY, nie znika)
+local function updateIncrement(incLabel, diff)
     if diff > 0 then
         incLabel.Text = "+" .. formatNumber(diff)
         incLabel.TextColor3 = C.green
-    else
+    elseif diff < 0 then
         incLabel.Text = formatNumber(diff)
         incLabel.TextColor3 = C.red
+    else
+        incLabel.Text = "+0"
+        incLabel.TextColor3 = C.textMuted
     end
-    tween(incLabel, {TextSize = 18}, 0.15)
+    -- Animacja: krótkie powiększenie
+    tween(incLabel, {TextSize = 13}, 0.15)
     task.wait(0.15)
-    tween(incLabel, {TextSize = 14}, 0.3)
-    task.delay(1.5, function()
-        if incLabel and incLabel.Parent then
-            tween(incLabel, {TextTransparency = 1}, 0.3)
-            task.wait(0.35)
-            if incLabel and incLabel.Parent then
-                incLabel.Text = ""
-                incLabel.TextTransparency = 0
-            end
-        end
-    end)
+    tween(incLabel, {TextSize = 11}, 0.3)
 end
 
 -- Śledzenie walut
 local lastValues = {}
 
-local function trackCurrency(cfg, valLabel, incLabel, idx)
-    local data = currencyData[cfg.name] or {start = nil, current = nil, last = nil, gain = 0}
-    currencyData[cfg.name] = data
-
+local function trackCurrency(cfg, valLabel, incLabel)
     local val = getCurrencyValue(cfg.path)
     if val ~= nil then
-        if data.last ~= nil then
-            local diff = val - data.last
+        if lastValues[cfg.name] ~= nil then
+            local diff = val - lastValues[cfg.name]
             if diff ~= 0 then
-                showIncrement(incLabel, diff, cfg.color)
+                updateIncrement(incLabel, diff)
             end
         end
-        if data.start == nil then
-            data.start = val
-        end
-        data.current = val
-        data.last = val
-        data.gain = val - (data.start or val)
-        -- Pokaż aktualną ilość
+        lastValues[cfg.name] = val
         valLabel.Text = formatNumber(val)
         valLabel.TextColor3 = cfg.color
     else
@@ -659,7 +639,7 @@ task.spawn(function()
     for _, cfg in ipairs(currencies) do
         local val = getCurrencyValue(cfg.path)
         if val ~= nil then
-            currencyData[cfg.name] = {start = val, current = val, last = val, gain = 0}
+            lastValues[cfg.name] = val
             notify("PSX", cfg.icon .. " " .. cfg.name .. ": " .. formatNumber(val), cfg.color)
         end
     end
@@ -668,8 +648,7 @@ end)
 -- Petla aktualizacji walut (co 1s)
 task.spawn(function()
     while running do
-        for i, cfg in ipairs(currencies) do
-            -- Znajdź odpowiednie labele
+        for _, cfg in ipairs(currencies) do
             local valLabel, incLabel
             if cfg.name == "Fantasy Coins" then
                 valLabel, incLabel = fcVal, fcInc
@@ -679,7 +658,7 @@ task.spawn(function()
                 valLabel, incLabel = dmVal, dmInc
             end
             if valLabel then
-                trackCurrency(cfg, valLabel, incLabel, i)
+                trackCurrency(cfg, valLabel, incLabel)
             end
         end
         task.wait(1)
@@ -704,6 +683,9 @@ task.spawn(function()
             end
             cpsVal.Text = string.format("%.1f", #clickTimestamps)
             totalVal.Text = tostring(totalClicks)
+            -- Diamonds w stat card (pełna liczba)
+            local d = getDiamonds() or 0
+            diamondVal.Text = formatNumber(d)
         else
             sessionVal.Text = "0s"
             cpsVal.Text = "0.0"
@@ -716,6 +698,6 @@ end)
 -- Entrance animation
 main.Size = UDim2.new(0, 0, 0, 0)
 main.Position = UDim2.new(0.5, 0, 0.5, 0)
-tween(main, {Size = UDim2.new(0, 320, 0, 560), Position = UDim2.new(0.5, -160, 0.5, -280)}, 0.4, Enum.EasingStyle.Back)
+tween(main, {Size = UDim2.new(0, 360, 0, 560), Position = UDim2.new(0.5, -180, 0.5, -280)}, 0.4, Enum.EasingStyle.Back)
 
 notify("FastClick", "PSX currencies tracking loaded", C.purpleLight)
