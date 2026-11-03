@@ -1,68 +1,89 @@
--- DIAGNOSTYKA WALUT PSX
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 
-local targets = {"Fantasy Coins", "Diamonds", "Halloween Candy", "Fantasy", "Candy"}
-
-local function checkInstance(inst, path)
-    if inst:IsA("IntValue") or inst:IsA("NumberValue") then
-        for _, t in ipairs(targets) do
-            if inst.Name:lower():find(t:lower(), 1, true) then
-                print("[VAL] " .. path .. " = " .. tostring(inst.Value))
+print("===== PRÓBA 1: getrenv()._G =====")
+local renv = getrenv and getrenv() or nil
+if renv then
+    print("getrenv OK")
+    for k, v in pairs(renv) do
+        if type(v) == "table" then
+            local name = tostring(k):lower()
+            if name:find("save") or name:find("data") or name:find("currency") then
+                print("  _G klucz: " .. k .. " (" .. type(v) .. ")")
             end
         end
     end
-    -- Atrybuty
-    for attrName, attrVal in pairs(inst:GetAttributes()) do
-        for _, t in ipairs(targets) do
-            if tostring(attrName):lower():find(t:lower(), 1, true) then
-                print("[ATTR] " .. path .. " :: " .. attrName .. " = " .. tostring(attrVal))
+    -- sprawdz _G
+    if renv._G then
+        for k, v in pairs(renv._G) do
+            local name = tostring(k):lower()
+            if name:find("save") or name:find("data") or name:find("currency") or name:find("coin") or name:find("diamond") or name:find("candy") then
+                print("  _G." .. k .. " = " .. type(v) .. " : " .. tostring(v))
             end
         end
-    end
-end
-
-print("===== LEADERSTATS =====")
-local ls = player:FindFirstChild("leaderstats")
-if ls then
-    for _, v in ipairs(ls:GetChildren()) do
-        print("  " .. v.Name .. " = " .. tostring(v.Value) .. " (" .. v.ClassName .. ")")
     end
 else
-    print("  brak leaderstats")
+    print("getrenv niedostępne")
 end
 
-print("===== ATRYBUTY GRACZA =====")
-for k, v in pairs(player:GetAttributes()) do
-    print("  " .. k .. " = " .. tostring(v))
-end
-
-print("===== SZUKANIE W GRACZU (rekurencyjnie, max 4 poziomy) =====")
-local function searchPlayer(inst, path, depth)
-    if depth > 4 then return end
-    checkInstance(inst, path)
-    for _, child in ipairs(inst:GetChildren()) do
-        searchPlayer(child, path .. "." .. child.Name, depth + 1)
+print("===== PRÓBA 2: getgc() szukanie tabel z walutami =====")
+local gc = getgc and getgc() or {}
+local found = 0
+for i, v in ipairs(gc) do
+    if type(v) == "table" then
+        -- szukaj tabel zawierających klucze walut
+        for k, val in pairs(v) do
+            local kn = tostring(k):lower()
+            if (kn == "diamonds" or kn == "fantasy coins" or kn == "fantasycoins" or kn == "halloween candy" or kn == "halloweencandy" or kn == "coins") and type(val) == "number" then
+                found = found + 1
+                print("  [GC#" .. i .. "] " .. tostring(k) .. " = " .. tostring(val))
+                -- wypisz inne klucze tej tabeli
+                print("     inne klucze:")
+                local cnt = 0
+                for k2, v2 in pairs(v) do
+                    if type(v2) == "number" or type(v2) == "string" then
+                        print("       " .. tostring(k2) .. " = " .. tostring(v2))
+                        cnt = cnt + 1
+                        if cnt > 20 then print("       ... (więcej)"); break end
+                    end
+                end
+                break
+            end
+        end
+        if found >= 5 then break end
     end
 end
-searchPlayer(player, "Player", 0)
+print("Znaleziono " .. found .. " tabel z walutami")
 
-print("===== SZUKANIE W REPLICATEDSTORAGE (rekurencyjnie, max 3 poziomy) =====")
-local function searchRS(inst, path, depth)
-    if depth > 3 then return end
-    checkInstance(inst, path)
-    for _, child in ipairs(inst:GetChildren()) do
-        searchRS(child, path .. "." .. child.Name, depth + 1)
+print("===== PRÓBA 3: szukanie przez debug.getupvalue w skryptach gry =====")
+-- Spróbuj znaleźć Save w skryptach gracza
+local scripts = {}
+for _, v in ipairs(player.PlayerScripts:GetDescendants()) do
+    if v:IsA("LocalScript") then table.insert(scripts, v) end
+end
+print("Liczba LocalScriptów: " .. #scripts)
+
+print("===== PRÓBA 4: shared table (_G w grze) =====")
+-- PSX często trzyma save w shared/_G
+pcall(function()
+    for k, v in pairs(shared) do
+        print("  shared." .. tostring(k) .. " = " .. type(v))
+    end
+end)
+
+print("===== PRÓBA 5: getfenv z skryptu Save =====")
+-- Spróbuj wywołać funkcje z modułu Save przez jego własne środowisko
+local saveMod = ReplicatedStorage:FindFirstChild("Library") and ReplicatedStorage.Library:FindFirstChild("Client") and ReplicatedStorage.Library.Client:FindFirstChild("Save")
+if saveMod then
+    -- Spróbuj uzyskać środowisko modułu
+    local ok, env = pcall(getfenv, saveMod)
+    print("getfenv ok=" .. tostring(ok) .. " typ=" .. type(env))
+    if ok and type(env) == "table" then
+        for k, v in pairs(env) do
+            print("  env." .. tostring(k) .. " = " .. type(v))
+        end
     end
 end
-searchRS(ReplicatedStorage, "RS", 0)
 
-print("===== MODUŁY Z 'Currency' w nazwie =====")
-for _, v in ipairs(ReplicatedStorage:GetDescendants()) do
-    if v:IsA("ModuleScript") and v.Name:lower():find("currency") then
-        print("  " .. v:GetFullName())
-    end
-end
-
-print("===== KONIEC DIAGNOSTYKI =====")
+print("===== KONIEC =====")
