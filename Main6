@@ -1,0 +1,670 @@
+-- FastClick v3 (minimalistyczne, responsywne) by stav - PSX Edition
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+pcall(function() playerGui:FindFirstChild("FastClickUI"):Destroy() end)
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "FastClickUI"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = playerGui
+
+local C = {
+    bg = Color3.fromRGB(12, 10, 18),
+    card = Color3.fromRGB(20, 16, 30),
+    cardHover = Color3.fromRGB(28, 22, 40),
+    purple = Color3.fromRGB(140, 70, 220),
+    purpleLight = Color3.fromRGB(180, 120, 255),
+    purpleDim = Color3.fromRGB(90, 50, 160),
+    text = Color3.fromRGB(235, 230, 250),
+    textDim = Color3.fromRGB(140, 130, 170),
+    textMuted = Color3.fromRGB(90, 82, 120),
+    green = Color3.fromRGB(90, 220, 130),
+    red = Color3.fromRGB(240, 90, 100),
+    yellow = Color3.fromRGB(250, 200, 80),
+    cyan = Color3.fromRGB(100, 220, 220),
+    gold = Color3.fromRGB(255, 200, 60),
+    border = Color3.fromRGB(40, 34, 56),
+}
+
+local function tween(obj, props, dur, style, dir)
+    TweenService:Create(obj, TweenInfo.new(dur or 0.2, style or Enum.EasingStyle.Quart, dir or Enum.EasingDirection.Out), props):Play()
+end
+
+-- Notifications
+local notifHolder = Instance.new("Frame")
+notifHolder.Name = "Notifs"
+notifHolder.BackgroundTransparency = 1
+notifHolder.Position = UDim2.new(1, -300, 0, 16)
+notifHolder.Size = UDim2.new(0, 280, 1, 0)
+notifHolder.Parent = screenGui
+
+local function notify(title, msg, color)
+    color = color or C.purpleLight
+    local f = Instance.new("Frame")
+    f.BackgroundColor3 = C.card
+    f.BorderSizePixel = 0
+    f.Size = UDim2.new(1, 0, 0, 52)
+    f.Position = UDim2.new(1, 16, 0, 0)
+    f.BackgroundTransparency = 0.1
+    f.Parent = notifHolder
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = f
+    local s = Instance.new("UIStroke"); s.Color = color; s.Thickness = 1; s.Transparency = 0.5; s.Parent = f
+    local bar = Instance.new("Frame")
+    bar.BackgroundColor3 = color
+    bar.BorderSizePixel = 0
+    bar.Position = UDim2.new(0, 0, 0, 0)
+    bar.Size = UDim2.new(0, 3, 1, 0)
+    bar.Parent = f
+    local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 10); bc.Parent = bar
+    local t = Instance.new("TextLabel")
+    t.BackgroundTransparency = 1
+    t.Position = UDim2.new(0, 12, 0, 6)
+    t.Size = UDim2.new(1, -20, 0, 16)
+    t.Font = Enum.Font.GothamBold
+    t.Text = title
+    t.TextColor3 = color
+    t.TextSize = 13
+    t.TextXAlignment = Enum.TextXAlignment.Left
+    t.Parent = f
+    local m = Instance.new("TextLabel")
+    m.BackgroundTransparency = 1
+    m.Position = UDim2.new(0, 12, 0, 24)
+    m.Size = UDim2.new(1, -20, 0, 24)
+    m.Font = Enum.Font.Gotham
+    m.Text = msg
+    m.TextColor3 = C.text
+    m.TextSize = 11
+    m.TextWrapped = true
+    m.TextXAlignment = Enum.TextXAlignment.Left
+    m.TextYAlignment = Enum.TextYAlignment.Top
+    m.Parent = f
+    tween(f, {Position = UDim2.new(0, 0, 0, 0)}, 0.3, Enum.EasingStyle.Back)
+    task.delay(3, function()
+        tween(f, {Position = UDim2.new(1, 16, 0, 0)}, 0.25)
+        task.wait(0.3)
+        f:Destroy()
+    end)
+end
+
+-- State
+local autoClicking = false
+local clickSpeed = 0.1
+local toggleKey = Enum.KeyCode.F
+local antiAfkEnabled = false
+local antiAfkInterval = 30
+local targetPos = Vector2.new(400, 300)
+local totalClicks = 0
+local clickTimestamps = {}
+local sessionStart = nil
+local sessionTime = 0
+local diamondsStart = nil
+local diamondsCurrent = 0
+local diamondsGain = 0
+local gemsStart = nil
+local gemsCurrent = 0
+local gemsGain = 0
+local running = true
+
+local function formatNumber(n)
+    if n == nil then return "N/A" end
+    n = math.floor(n)
+    local s = tostring(n)
+    -- Dodaj przecinki
+    local formatted = ""
+    local len = #s
+    for i = 1, len do
+        formatted = formatted .. s:sub(i, i)
+        if (len - i) % 3 == 0 and i < len then
+            formatted = formatted .. ","
+        end
+    end
+    if n >= 1e9 then return string.format("%.2fB", n / 1e9)
+    elseif n >= 1e6 then return string.format("%.2fM", n / 1e6)
+    elseif n >= 1e3 then return formatted
+    else return s end
+end
+
+local function getDiamonds()
+    local ls = player:FindFirstChild("leaderstats")
+    if ls then
+        local d = ls:FindFirstChild("Diamonds")
+        if d then return d.Value end
+    end
+    return nil
+end
+
+local function getGems()
+    -- Szukaj Gems w różnych miejscach
+    local ls = player:FindFirstChild("leaderstats")
+    if ls then
+        for _, v in ipairs(ls:GetChildren()) do
+            if v.Name:lower():find("gem") then
+                return v.Value
+            end
+        end
+    end
+    -- Spróbuj znaleźć w atrybutach
+    for k, v in pairs(player:GetAttributes()) do
+        if tostring(k):lower():find("gem") and type(v) == "number" then
+            return v
+        end
+    end
+    -- Szukaj w PlayerGui (tekst z liczbą gemów)
+    if player:FindFirstChild("PlayerGui") then
+        for _, inst in ipairs(player.PlayerGui:GetDescendants()) do
+            if inst:IsA("TextLabel") then
+                local txt = inst.Text
+                -- Szukaj label z "Gems" i liczbą
+                if txt:lower():find("gem") and txt:match("%d") then
+                    local num = txt:match("([%d,]+)")
+                    if num then
+                        num = num:gsub(",", "")
+                        local n = tonumber(num)
+                        if n then return n end
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local running = true
+
+-- Main window (minimalistyczne, kompaktowe)
+local main = Instance.new("Frame")
+main.Name = "Main"
+main.BackgroundColor3 = C.bg
+main.BorderSizePixel = 0
+main.Position = UDim2.new(0.5, -160, 0.5, -240)
+main.Size = UDim2.new(0, 320, 0, 480)
+main.Active = true
+main.Draggable = true
+main.ClipsDescendants = true
+main.Parent = screenGui
+local mainCorner = Instance.new("UICorner"); mainCorner.CornerRadius = UDim.new(0, 12); mainCorner.Parent = main
+local mainStroke = Instance.new("UIStroke"); mainStroke.Color = C.border; mainStroke.Thickness = 1; mainStroke.Parent = main
+
+-- Title bar (kompaktowy)
+local titleBar = Instance.new("Frame")
+titleBar.Name = "TitleBar"
+titleBar.BackgroundColor3 = C.card
+titleBar.BorderSizePixel = 0
+titleBar.Size = UDim2.new(1, 0, 0, 40)
+titleBar.Parent = main
+local titleCorner = Instance.new("UICorner"); titleCorner.CornerRadius = UDim.new(0, 12); titleCorner.Parent = titleBar
+local titleCover = Instance.new("Frame")
+titleCover.BackgroundColor3 = C.card
+titleCover.BorderSizePixel = 0
+titleCover.Position = UDim2.new(0, 0, 0.5, 0)
+titleCover.Size = UDim2.new(1, 0, 0.5, 0)
+titleCover.Parent = titleBar
+local titleGrad = Instance.new("UIGradient")
+titleGrad.Color = ColorSequence.new({ColorSequenceKeypoint.new(0, C.purple), ColorSequenceKeypoint.new(1, C.card)})
+titleGrad.Rotation = 90; titleGrad.Parent = titleBar
+local title = Instance.new("TextLabel")
+title.BackgroundTransparency = 1
+title.Position = UDim2.new(0, 12, 0, 0)
+title.Size = UDim2.new(1, -48, 1, 0)
+title.Font = Enum.Font.GothamBold
+title.Text = "FastClick"
+title.TextColor3 = C.text
+title.TextSize = 15
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = titleBar
+local closeBtn = Instance.new("TextButton")
+closeBtn.BackgroundColor3 = C.red
+closeBtn.BorderSizePixel = 0
+closeBtn.Position = UDim2.new(1, -30, 0.5, -10)
+closeBtn.Size = UDim2.new(0, 20, 0, 20)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.Text = "×"
+closeBtn.TextColor3 = C.text
+closeBtn.TextSize = 16
+closeBtn.Parent = titleBar
+local closeCorner = Instance.new("UICorner"); closeCorner.CornerRadius = UDim.new(0, 6); closeCorner.Parent = closeBtn
+closeBtn.MouseButton1Click:Connect(function() main.Visible = false end)
+
+-- Content
+local content = Instance.new("Frame")
+content.BackgroundTransparency = 1
+content.Position = UDim2.new(0, 10, 0, 46)
+content.Size = UDim2.new(1, -20, 1, -56)
+content.Parent = main
+
+local y = 0
+
+-- Helper: card
+local function card(parent, y, h, color)
+    color = color or C.card
+    local c = Instance.new("Frame")
+    c.BackgroundColor3 = color
+    c.BorderSizePixel = 0
+    c.Position = UDim2.new(0, 0, 0, y)
+    c.Size = UDim2.new(1, 0, 0, h)
+    c.Parent = parent
+    local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 8); corner.Parent = c
+    local stroke = Instance.new("UIStroke"); stroke.Color = C.border; stroke.Thickness = 1; stroke.Transparency = 0.6; stroke.Parent = c
+    return c
+end
+
+-- Status (kompaktowy, 1 linia)
+local statusCard = card(content, y, 32, C.card)
+y = y + 36
+local statusDot = Instance.new("Frame")
+statusDot.BackgroundColor3 = C.red
+statusDot.BorderSizePixel = 0
+statusDot.Position = UDim2.new(0, 10, 0.5, -4)
+statusDot.Size = UDim2.new(0, 8, 0, 8)
+statusDot.Parent = statusCard
+local sdc = Instance.new("UICorner"); sdc.CornerRadius = UDim.new(1, 0); sdc.Parent = statusDot
+local statusText = Instance.new("TextLabel")
+statusText.BackgroundTransparency = 1
+statusText.Position = UDim2.new(0, 24, 0, 0)
+statusText.Size = UDim2.new(1, -30, 1, 0)
+statusText.Font = Enum.Font.GothamBold
+statusText.Text = "OFFLINE"
+statusText.TextColor3 = C.red
+statusText.TextSize = 12
+statusText.TextXAlignment = Enum.TextXAlignment.Left
+statusText.Parent = statusCard
+
+local function updateStatus()
+    if autoClicking then
+        statusDot.BackgroundColor3 = C.green
+        statusText.Text = "ACTIVE • " .. string.format("%.1f", 1/clickSpeed) .. " CPS"
+        statusText.TextColor3 = C.green
+    else
+        statusDot.BackgroundColor3 = C.red
+        statusText.Text = "OFFLINE"
+        statusText.TextColor3 = C.red
+    end
+end
+
+-- Toggle button
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.BackgroundColor3 = C.purple
+toggleBtn.BorderSizePixel = 0
+toggleBtn.Position = UDim2.new(0, 0, 0, y)
+toggleBtn.Size = UDim2.new(1, 0, 0, 34)
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.Text = "Toggle AutoClicker"
+toggleBtn.TextColor3 = C.text
+toggleBtn.TextSize = 13
+toggleBtn.Parent = content
+local tbc = Instance.new("UICorner"); tbc.CornerRadius = UDim.new(0, 8); tbc.Parent = toggleBtn
+local tbg = Instance.new("UIGradient")
+tbg.Color = ColorSequence.new({ColorSequenceKeypoint.new(0, C.purple), ColorSequenceKeypoint.new(1, C.purpleDim)})
+tbg.Rotation = 90; tbg.Parent = toggleBtn
+toggleBtn.MouseButton1Click:Connect(function()
+    autoClicking = not autoClicking
+    if autoClicking then
+        sessionStart = tick()
+        totalClicks = 0
+        clickTimestamps = {}
+    else
+        sessionStart = nil
+    end
+    updateStatus()
+    notify("AutoClicker", autoClicking and "Activated" or "Deactivated", autoClicking and C.green or C.red)
+end)
+toggleBtn.MouseEnter:Connect(function() tween(toggleBtn, {BackgroundColor3 = C.purpleLight}, 0.15) end)
+toggleBtn.MouseLeave:Connect(function() tween(toggleBtn, {BackgroundColor3 = C.purple}, 0.15) end)
+y = y + 38
+
+-- Speed + Keybind w jednym rzędzie (kompaktowe)
+local row = Instance.new("Frame")
+row.BackgroundTransparency = 1
+row.Position = UDim2.new(0, 0, 0, y)
+row.Size = UDim2.new(1, 0, 0, 30)
+row.Parent = content
+
+local speedBox = Instance.new("TextBox")
+speedBox.BackgroundColor3 = C.card
+speedBox.BorderSizePixel = 0
+speedBox.Position = UDim2.new(0, 0, 0, 0)
+speedBox.Size = UDim2.new(0.5, -3, 1, 0)
+speedBox.Font = Enum.Font.GothamBold
+speedBox.PlaceholderText = "Speed (s)"
+speedBox.Text = "0.1"
+speedBox.TextColor3 = C.text
+speedBox.TextSize = 12
+speedBox.Parent = row
+local sbc = Instance.new("UICorner"); sbc.CornerRadius = UDim.new(0, 6); sbc.Parent = speedBox
+local sbs = Instance.new("UIStroke"); sbs.Color = C.border; sbs.Thickness = 1; sbs.Parent = speedBox
+speedBox.FocusLost:Connect(function()
+    local speed = tonumber(speedBox.Text)
+    if speed and speed > 0 then
+        clickSpeed = speed
+        updateStatus()
+        notify("Speed", "Set to " .. speed .. "s", C.purpleLight)
+    else
+        speedBox.Text = tostring(clickSpeed)
+        notify("Speed", "Invalid", C.red)
+    end
+end)
+
+local keyBtn = Instance.new("TextButton")
+keyBtn.BackgroundColor3 = C.card
+keyBtn.BorderSizePixel = 0
+keyBtn.Position = UDim2.new(0.5, 3, 0, 0)
+keyBtn.Size = UDim2.new(0.5, -3, 1, 0)
+keyBtn.Font = Enum.Font.GothamBold
+keyBtn.Text = "Key: F"
+keyBtn.TextColor3 = C.purpleLight
+keyBtn.TextSize = 12
+keyBtn.Parent = row
+local kbc = Instance.new("UICorner"); kbc.CornerRadius = UDim.new(0, 6); kbc.Parent = keyBtn
+local kbs = Instance.new("UIStroke"); kbs.Color = C.border; kbs.Thickness = 1; kbs.Parent = keyBtn
+local waitingForKey = false
+keyBtn.MouseButton1Click:Connect(function()
+    waitingForKey = true
+    keyBtn.Text = "Press..."
+end)
+y = y + 34
+
+-- Anti-AFK (kompaktowy toggle)
+local afkRow = Instance.new("Frame")
+afkRow.BackgroundTransparency = 1
+afkRow.Position = UDim2.new(0, 0, 0, y)
+afkRow.Size = UDim2.new(1, 0, 0, 30)
+afkRow.Parent = content
+
+local afkToggle = Instance.new("TextButton")
+afkToggle.BackgroundColor3 = C.card
+afkToggle.BorderSizePixel = 0
+afkToggle.Size = UDim2.new(0.5, -3, 1, 0)
+afkToggle.Font = Enum.Font.GothamBold
+afkToggle.Text = "Anti-AFK: OFF"
+afkToggle.TextColor3 = C.textDim
+afkToggle.TextSize = 12
+afkToggle.Parent = afkRow
+local atc = Instance.new("UICorner"); atc.CornerRadius = UDim.new(0, 6); atc.Parent = afkToggle
+local ats = Instance.new("UIStroke"); ats.Color = C.border; ats.Thickness = 1; ats.Parent = afkToggle
+afkToggle.MouseButton1Click:Connect(function()
+    antiAfkEnabled = not antiAfkEnabled
+    afkToggle.Text = "Anti-AFK: " .. (antiAfkEnabled and "ON" or "OFF")
+    afkToggle.TextColor3 = antiAfkEnabled and C.green or C.textDim
+    notify("Anti-AFK", antiAfkEnabled and "Enabled" or "Disabled", antiAfkEnabled and C.green or C.red)
+end)
+
+local afkBox = Instance.new("TextBox")
+afkBox.BackgroundColor3 = C.card
+afkBox.BorderSizePixel = 0
+afkBox.Position = UDim2.new(0.5, 3, 0, 0)
+afkBox.Size = UDim2.new(0.5, -3, 1, 0)
+afkBox.Font = Enum.Font.GothamBold
+afkBox.PlaceholderText = "Interval (s)"
+afkBox.Text = "30"
+afkBox.TextColor3 = C.text
+afkBox.TextSize = 12
+afkBox.Parent = afkRow
+local abc = Instance.new("UICorner"); abc.CornerRadius = UDim.new(0, 6); abc.Parent = afkBox
+local abs = Instance.new("UIStroke"); abs.Color = C.border; abs.Thickness = 1; abs.Parent = afkBox
+afkBox.FocusLost:Connect(function()
+    local v = tonumber(afkBox.Text)
+    if v and v > 0 then
+        antiAfkInterval = v
+    else
+        afkBox.Text = tostring(antiAfkInterval)
+    end
+end)
+y = y + 34
+
+-- Stats (kompaktowe, 2 kolumny)
+local function statCard(parent, x, y, w, label, value, color)
+    local c = Instance.new("Frame")
+    c.BackgroundColor3 = C.card
+    c.BorderSizePixel = 0
+    c.Position = UDim2.new(x, 0, 0, y)
+    c.Size = UDim2.new(w, 0, 0, 36)
+    c.Parent = parent
+    local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 6); corner.Parent = c
+    local stroke = Instance.new("UIStroke"); stroke.Color = C.border; stroke.Thickness = 1; stroke.Transparency = 0.6; stroke.Parent = c
+    local lbl = Instance.new("TextLabel")
+    lbl.BackgroundTransparency = 1
+    lbl.Position = UDim2.new(0, 8, 0, 2)
+    lbl.Size = UDim2.new(1, -16, 0, 14)
+    lbl.Font = Enum.Font.Gotham
+    lbl.Text = label
+    lbl.TextColor3 = C.textMuted
+    lbl.TextSize = 9
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = c
+    local val = Instance.new("TextLabel")
+    val.BackgroundTransparency = 1
+    val.Position = UDim2.new(0, 8, 0, 16)
+    val.Size = UDim2.new(1, -16, 0, 16)
+    val.Font = Enum.Font.GothamBold
+    val.Text = value
+    val.TextColor3 = color or C.text
+    val.TextSize = 12
+    val.TextXAlignment = Enum.TextXAlignment.Left
+    val.Parent = c
+    return c, val
+end
+
+local sessionCard, sessionVal = statCard(content, 0, y, 0.5, "SESSION", "0s", C.yellow)
+local cpsCard, cpsVal = statCard(content, 0.5, y, 0.5, "CPS", "0.0", C.purpleLight)
+y = y + 40
+local totalCard, totalVal = statCard(content, 0, y, 0.5, "CLICKS", "0", C.text)
+local diamondCard, diamondVal = statCard(content, 0.5, y, 0.5, "DIAMONDS", "0", C.cyan)
+y = y + 40
+local gemCard, gemVal = statCard(content, 0, y, 1, "GEMS", "0  (+0)", C.gold)
+y = y + 44
+
+-- Destroy button
+local destroyBtn = Instance.new("TextButton")
+destroyBtn.BackgroundColor3 = C.red
+destroyBtn.BorderSizePixel = 0
+destroyBtn.Position = UDim2.new(0, 0, 0, y)
+destroyBtn.Size = UDim2.new(1, 0, 0, 28)
+destroyBtn.Font = Enum.Font.GothamBold
+destroyBtn.Text = "Destroy"
+destroyBtn.TextColor3 = C.text
+destroyBtn.TextSize = 12
+destroyBtn.Parent = content
+local dbc = Instance.new("UICorner"); dbc.CornerRadius = UDim.new(0, 6); dbc.Parent = destroyBtn
+destroyBtn.MouseButton1Click:Connect(function()
+    running = false
+    autoClicking = false
+    antiAfkEnabled = false
+    notify("FastClick", "Shutting down...", C.red)
+    task.wait(0.5)
+    screenGui:Destroy()
+end)
+y = y + 32
+
+-- Click target (minimalistyczny)
+local target = Instance.new("Frame")
+target.Name = "ClickTarget"
+target.BackgroundColor3 = C.purple
+target.BorderSizePixel = 0
+target.Position = UDim2.new(0.5, -18, 0.5, -18)
+target.Size = UDim2.new(0, 36, 0, 36)
+target.Active = true
+target.Draggable = true
+target.Parent = screenGui
+local targetCorner = Instance.new("UICorner"); targetCorner.CornerRadius = UDim.new(1, 0); targetCorner.Parent = target
+local targetGrad = Instance.new("UIGradient")
+targetGrad.Color = ColorSequence.new({ColorSequenceKeypoint.new(0, C.purpleLight), ColorSequenceKeypoint.new(1, C.purple)})
+targetGrad.Rotation = 45; targetGrad.Parent = target
+local targetStroke = Instance.new("UIStroke"); targetStroke.Color = C.text; targetStroke.Thickness = 1.5; targetStroke.Transparency = 0.4; targetStroke.Parent = target
+local targetLabel = Instance.new("TextLabel")
+targetLabel.BackgroundTransparency = 1
+targetLabel.Size = UDim2.new(1, 0, 1, 0)
+targetLabel.Font = Enum.Font.GothamBold
+targetLabel.Text = "•"
+targetLabel.TextColor3 = C.text
+targetLabel.TextSize = 20
+targetLabel.Parent = target
+
+RunService.RenderStepped:Connect(function()
+    targetPos = target.AbsolutePosition + target.AbsoluteSize / 2
+end)
+
+-- Input
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if waitingForKey and input.UserInputType == Enum.UserInputType.Keyboard then
+        toggleKey = input.KeyCode
+        keyBtn.Text = "Key: " .. input.KeyCode.Name
+        waitingForKey = false
+        notify("Keybind", "Set to " .. input.KeyCode.Name, C.purpleLight)
+        return
+    end
+    if input.KeyCode == toggleKey then
+        autoClicking = not autoClicking
+        if autoClicking then
+            sessionStart = tick()
+            totalClicks = 0
+            clickTimestamps = {}
+        else
+            sessionStart = nil
+        end
+        updateStatus()
+        notify("AutoClicker", autoClicking and "Activated" or "Deactivated", autoClicking and C.green or C.red)
+    end
+    if input.KeyCode == Enum.KeyCode.Insert then
+        main.Visible = not main.Visible
+    end
+end)
+
+-- Auto-click loop
+task.spawn(function()
+    while running do
+        if autoClicking then
+            local x, y = targetPos.X, targetPos.Y
+            VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
+            task.wait()
+            VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
+            totalClicks = totalClicks + 1
+            table.insert(clickTimestamps, tick())
+            local now = tick()
+            while #clickTimestamps > 0 and (now - clickTimestamps[1]) > 1 do
+                table.remove(clickTimestamps, 1)
+            end
+            task.wait(clickSpeed)
+        else
+            task.wait(0.1)
+        end
+    end
+end)
+
+-- Anti-AFK loop
+task.spawn(function()
+    while running do
+        if antiAfkEnabled then
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.A, false, game)
+            task.wait(0.1)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.A, false, game)
+            task.wait(0.1)
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.D, false, game)
+            task.wait(0.1)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.D, false, game)
+            task.wait(antiAfkInterval)
+        else
+            task.wait(0.5)
+        end
+    end
+end)
+
+-- Diamonds init + update
+task.spawn(function()
+    task.wait(1)
+    local val = getDiamonds()
+    if val ~= nil then
+        diamondsCurrent = val
+        diamondsStart = val
+        diamondsGain = 0
+        diamondVal.Text = formatNumber(val)
+        notify("PSX", "Diamonds: " .. formatNumber(val), C.cyan)
+    else
+        diamondVal.Text = "N/A"
+        diamondVal.TextColor3 = C.red
+    end
+end)
+
+task.spawn(function()
+    while running do
+        local val = getDiamonds()
+        if val ~= nil then
+            diamondsCurrent = val
+            if diamondsStart == nil then diamondsStart = val end
+            diamondsGain = val - (diamondsStart or val)
+            diamondVal.Text = formatNumber(val)
+        end
+        task.wait(1)
+    end
+end)
+
+-- Gems init + update
+task.spawn(function()
+    task.wait(1.5)
+    local val = getGems()
+    if val ~= nil then
+        gemsCurrent = val
+        gemsStart = val
+        gemsGain = 0
+        gemVal.Text = formatNumber(val) .. "  (+0)"
+        notify("PSX", "Gems: " .. formatNumber(val), C.gold)
+    else
+        gemVal.Text = "N/A"
+        gemVal.TextColor3 = C.red
+    end
+end)
+
+task.spawn(function()
+    while running do
+        local val = getGems()
+        if val ~= nil then
+            gemsCurrent = val
+            if gemsStart == nil then gemsStart = val end
+            gemsGain = val - (gemsStart or val)
+            gemVal.Text = formatNumber(val) .. "  (+" .. formatNumber(gemsGain) .. ")"
+        end
+        task.wait(2)
+    end
+end)
+
+-- UI update loop
+task.spawn(function()
+    while running do
+        if autoClicking and sessionStart then
+            sessionTime = tick() - sessionStart
+            local mins = math.floor(sessionTime / 60)
+            local secs = math.floor(sessionTime % 60)
+            if mins > 0 then
+                sessionVal.Text = string.format("%dm %ds", mins, secs)
+            else
+                sessionVal.Text = string.format("%ds", secs)
+            end
+            local now = tick()
+            while #clickTimestamps > 0 and (now - clickTimestamps[1]) > 1 do
+                table.remove(clickTimestamps, 1)
+            end
+            cpsVal.Text = string.format("%.1f", #clickTimestamps)
+            totalVal.Text = tostring(totalClicks)
+        else
+            sessionVal.Text = "0s"
+            cpsVal.Text = "0.0"
+            totalVal.Text = tostring(totalClicks)
+        end
+        task.wait(0.1)
+    end
+end)
+
+-- Entrance animation
+main.Size = UDim2.new(0, 0, 0, 0)
+main.Position = UDim2.new(0.5, 0, 0.5, 0)
+tween(main, {Size = UDim2.new(0, 320, 0, 480), Position = UDim2.new(0.5, -160, 0.5, -240)}, 0.4, Enum.EasingStyle.Back)
+
+notify("FastClick", "Minimalistyczne UI załadowane", C.purpleLight)
