@@ -1,1 +1,50 @@
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
 print("===== SZUKANIE W CAŁEJ GRZE =====")
+local targets = {"fantasy", "candy", "halloween", "coin"}
+local found = 0
+for _, inst in ipairs(game:GetDescendants()) do
+    if inst:IsA("IntValue") or inst:IsA("NumberValue") then
+        local n = inst.Name:lower()
+        for _, t in ipairs(targets) do
+            if n:find(t, 1, true) then
+                found = found + 1
+                -- sprawdz czy to faktycznie waluta (duza wartosc)
+                if inst.Value > 0 then
+                    print("  [VAL] " .. inst:GetFullName() .. " = " .. tostring(inst.Value))
+                end
+            end
+        end
+    end
+    -- atrybuty
+    if inst:GetAttributes() then
+        for attrName, attrVal in pairs(inst:GetAttributes()) do
+            local an = tostring(attrName):lower()
+            for _, t in ipairs(targets) do
+                if an:find(t, 1, true) and type(attrVal) == "number" then
+                    found = found + 1
+                    print("  [ATTR] " .. inst:GetFullName() .. " :: " .. attrName .. " = " .. tostring(attrVal))
+                end
+            end
+        end
+    end
+end
+print("Znaleziono " .. found .. " pasujących instancji")
+
+print("===== SZUKANIE StringValue z danymi =====")
+for _, inst in ipairs(game:GetDescendants()) do
+    if inst:IsA("StringValue") then
+        local v = inst.Value
+        if v:find("Fantasy") or v:find("Candy") or v:find("Diamond") then
+            print("  " .. inst:GetFullName() .. " = " .. v:sub(1, 100))
+        end
+    end
+end
+
+print("===== FOLDERY W WORKSPACE =====")
+for _, c in ipairs(workspace:GetChildren()) do
+    print("  " .. c.Name .. " (" .. c.ClassName .. ")")
+end
+
+print("===== KONIEC =====")
