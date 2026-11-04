@@ -1,4 +1,4 @@
--- FastClick v3.8 (naprawione liczniki) by stav - PSX Edition
+-- FastClick v3.9 (reset stats) by stav - PSX Edition
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
@@ -384,7 +384,7 @@ afkBox.FocusLost:Connect(function()
 end)
 y = y + 34
 
--- Stats (3 karty: Session, CPS, Clicks)
+-- Stats
 local function statCard(parent, x, y, w, label, value, color)
     local c = Instance.new("Frame")
     c.BackgroundColor3 = C.card
@@ -455,7 +455,6 @@ local function currencyCard(parent, y, name, icon, color)
     val.TextXAlignment = Enum.TextXAlignment.Left
     val.TextWrapped = false
     val.Parent = c
-    -- ZAWSZE WIDOCZNY przyrost (akumulowany)
     local inc = Instance.new("TextLabel")
     inc.BackgroundTransparency = 1
     inc.Position = UDim2.new(0, 38, 0, 32)
@@ -476,17 +475,64 @@ y = y + 56
 local dmCard, dmVal, dmInc = currencyCard(content, y, "Diamonds", "💎", C.cyan)
 y = y + 56
 
--- Destroy button
+-- Przyciski Destroy i Reset Stats w jednym rzędzie
+local btnRow = Instance.new("Frame")
+btnRow.BackgroundTransparency = 1
+btnRow.Position = UDim2.new(0, 0, 0, y)
+btnRow.Size = UDim2.new(1, 0, 0, 28)
+btnRow.Parent = content
+
+local resetBtn = Instance.new("TextButton")
+resetBtn.BackgroundColor3 = C.purple
+resetBtn.BorderSizePixel = 0
+resetBtn.Position = UDim2.new(0, 0, 0, 0)
+resetBtn.Size = UDim2.new(0.5, -3, 1, 0)
+resetBtn.Font = Enum.Font.GothamBold
+resetBtn.Text = "Reset Stats"
+resetBtn.TextColor3 = C.text
+resetBtn.TextSize = 12
+resetBtn.Parent = btnRow
+local rbc = Instance.new("UICorner"); rbc.CornerRadius = UDim.new(0, 6); rbc.Parent = resetBtn
+local rbg = Instance.new("UIGradient")
+rbg.Color = ColorSequence.new({ColorSequenceKeypoint.new(0, C.purple), ColorSequenceKeypoint.new(1, C.purpleDim)})
+rbg.Rotation = 90; rbg.Parent = resetBtn
+resetBtn.MouseButton1Click:Connect(function()
+    -- Reset akumulowanych przyrostów
+    for name in pairs(accumulatedGain) do
+        accumulatedGain[name] = 0
+    end
+    -- Reset liczników kliknięć i sesji
+    totalClicks = 0
+    clickTimestamps = {}
+    sessionStart = nil
+    sessionTime = 0
+    autoClicking = false
+    updateStatus()
+    -- Reset przyrostów w UI
+    fcInc.Text = "+0"
+    hcInc.Text = "+0"
+    dmInc.Text = "+0"
+    fcInc.TextColor3 = C.textMuted
+    hcInc.TextColor3 = C.textMuted
+    dmInc.TextColor3 = C.textMuted
+    clicksVal.Text = "0"
+    sessionVal.Text = "0s"
+    cpsVal.Text = "0.0"
+    notify("Stats", "All stats reset", C.purpleLight)
+end)
+resetBtn.MouseEnter:Connect(function() tween(resetBtn, {BackgroundColor3 = C.purpleLight}, 0.15) end)
+resetBtn.MouseLeave:Connect(function() tween(resetBtn, {BackgroundColor3 = C.purple}, 0.15) end)
+
 local destroyBtn = Instance.new("TextButton")
 destroyBtn.BackgroundColor3 = C.red
 destroyBtn.BorderSizePixel = 0
-destroyBtn.Position = UDim2.new(0, 0, 0, y)
-destroyBtn.Size = UDim2.new(1, 0, 0, 28)
+destroyBtn.Position = UDim2.new(0.5, 3, 0, 0)
+destroyBtn.Size = UDim2.new(0.5, -3, 1, 0)
 destroyBtn.Font = Enum.Font.GothamBold
 destroyBtn.Text = "Destroy"
 destroyBtn.TextColor3 = C.text
 destroyBtn.TextSize = 12
-destroyBtn.Parent = content
+destroyBtn.Parent = btnRow
 local dbc = Instance.new("UICorner"); dbc.CornerRadius = UDim.new(0, 6); dbc.Parent = destroyBtn
 destroyBtn.MouseButton1Click:Connect(function()
     running = false
@@ -664,7 +710,7 @@ task.spawn(function()
     end
 end)
 
--- UI update loop (naprawiony - session clicks, CPS działają)
+-- UI update loop
 task.spawn(function()
     while running do
         if autoClicking and sessionStart then
