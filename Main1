@@ -1,4 +1,4 @@
--- FastClick v3.9 (reset stats) by stav - PSX Edition
+-- FastClick v4.0 (naprawione przyciski) by stav - PSX Edition
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
@@ -10,12 +10,27 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 pcall(function() playerGui:FindFirstChild("FastClickUI"):Destroy() end)
 
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "FastClickUI"
-screenGui.ResetOnSpawn = false
-screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-screenGui.Parent = playerGui
+-- ===== ZMIENNE (deklarowane PRZED UI) =====
+local autoClicking = false
+local clickSpeed = 0.1
+local toggleKey = Enum.KeyCode.F
+local antiAfkEnabled = false
+local antiAfkInterval = 30
+local targetPos = Vector2.new(400, 300)
+local totalClicks = 0
+local clickTimestamps = {}
+local sessionStart = nil
+local sessionTime = 0
+local running = true
+local waitingForKey = false
 
+-- Waluty PSX
+local currencies = {
+    {name = "Fantasy Coins", path = "Main.Right.Fantasy Coins", color = nil, icon = "C"},
+    {name = "Halloween Candy", path = "Main.Right.Halloween Candy", color = nil, icon = "H"},
+    {name = "Diamonds", path = "Main.Right.Diamonds", color = nil, icon = "D"},
+}
+-- Kolory ustawione po definicji C
 local C = {
     bg = Color3.fromRGB(12, 10, 18),
     card = Color3.fromRGB(20, 16, 30),
@@ -34,9 +49,56 @@ local C = {
     border = Color3.fromRGB(40, 34, 56),
 }
 
+currencies[1].color = C.gold
+currencies[2].color = C.orange
+currencies[3].color = C.cyan
+
+local lastValues = {}
+local accumulatedGain = {}
+
+-- ===== FUNKCJE POMOCNICZE =====
 local function tween(obj, props, dur, style, dir)
     TweenService:Create(obj, TweenInfo.new(dur or 0.2, style or Enum.EasingStyle.Quart, dir or Enum.EasingDirection.Out), props):Play()
 end
+
+local function formatNumber(n)
+    if n == nil then return "N/A" end
+    n = math.floor(n)
+    local s = tostring(math.abs(n))
+    local formatted = ""
+    local len = #s
+    for i = 1, len do
+        formatted = formatted .. s:sub(i, i)
+        if (len - i) % 3 == 0 and i < len then
+            formatted = formatted .. ","
+        end
+    end
+    if n < 0 then formatted = "-" .. formatted end
+    return formatted
+end
+
+local function getCurrencyValue(path)
+    local cur = playerGui
+    for part in path:gmatch("[^%.]+") do
+        cur = cur:FindFirstChild(part)
+        if not cur then return nil end
+    end
+    local amountLabel = cur:FindFirstChild("Amount_odometerGUIFX") or cur:FindFirstChild("Amount")
+    if amountLabel and amountLabel:IsA("TextLabel") then
+        local txt = amountLabel.Text
+        local numStr = txt:gsub("%s", ""):gsub(",", "")
+        local num = tonumber(numStr)
+        if num then return num end
+    end
+    return nil
+end
+
+-- ===== UI =====
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "FastClickUI"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = playerGui
 
 local notifHolder = Instance.new("Frame")
 notifHolder.Name = "Notifs"
@@ -91,60 +153,6 @@ local function notify(title, msg, color)
         task.wait(0.3)
         f:Destroy()
     end)
-end
-
--- State
-local autoClicking = false
-local clickSpeed = 0.1
-local toggleKey = Enum.KeyCode.F
-local antiAfkEnabled = false
-local antiAfkInterval = 30
-local targetPos = Vector2.new(400, 300)
-local totalClicks = 0
-local clickTimestamps = {}
-local sessionStart = nil
-local sessionTime = 0
-local running = true
-
--- Waluty PSX
-local currencies = {
-    {name = "Fantasy Coins", path = "Main.Right.Fantasy Coins", color = C.gold, icon = "🪙"},
-    {name = "Halloween Candy", path = "Main.Right.Halloween Candy", color = C.orange, icon = "🍬"},
-    {name = "Diamonds", path = "Main.Right.Diamonds", color = C.cyan, icon = "💎"},
-}
-
-local currencyData = {}
-
-local function formatNumber(n)
-    if n == nil then return "N/A" end
-    n = math.floor(n)
-    local s = tostring(math.abs(n))
-    local formatted = ""
-    local len = #s
-    for i = 1, len do
-        formatted = formatted .. s:sub(i, i)
-        if (len - i) % 3 == 0 and i < len then
-            formatted = formatted .. ","
-        end
-    end
-    if n < 0 then formatted = "-" .. formatted end
-    return formatted
-end
-
-local function getCurrencyValue(path)
-    local cur = playerGui
-    for part in path:gmatch("[^%.]+") do
-        cur = cur:FindFirstChild(part)
-        if not cur then return nil end
-    end
-    local amountLabel = cur:FindFirstChild("Amount_odometerGUIFX") or cur:FindFirstChild("Amount")
-    if amountLabel and amountLabel:IsA("TextLabel") then
-        local txt = amountLabel.Text
-        local numStr = txt:gsub("%s", ""):gsub(",", "")
-        local num = tonumber(numStr)
-        if num then return num end
-    end
-    return nil
 end
 
 -- Main window
@@ -384,7 +392,7 @@ afkBox.FocusLost:Connect(function()
 end)
 y = y + 34
 
--- Stats
+-- Stats (3 karty)
 local function statCard(parent, x, y, w, label, value, color)
     local c = Instance.new("Frame")
     c.BackgroundColor3 = C.card
@@ -422,7 +430,7 @@ local cpsCard, cpsVal = statCard(content, 0.33, y, 0.33, "CPS", "0.0", C.purpleL
 local clicksCard, clicksVal = statCard(content, 0.66, y, 0.34, "CLICKS", "0", C.text)
 y = y + 40
 
--- Waluty PSX (karty z akumulowanym przyrostem)
+-- Waluty PSX
 local function currencyCard(parent, y, name, icon, color)
     local c = card(parent, y, 52, C.card)
     local iconLbl = Instance.new("TextLabel")
@@ -468,14 +476,14 @@ local function currencyCard(parent, y, name, icon, color)
     return c, val, inc
 end
 
-local fcCard, fcVal, fcInc = currencyCard(content, y, "Fantasy Coins", "🪙", C.gold)
+local fcCard, fcVal, fcInc = currencyCard(content, y, "Fantasy Coins", "C", C.gold)
 y = y + 56
-local hcCard, hcVal, hcInc = currencyCard(content, y, "Halloween Candy", "🍬", C.orange)
+local hcCard, hcVal, hcInc = currencyCard(content, y, "Halloween Candy", "H", C.orange)
 y = y + 56
-local dmCard, dmVal, dmInc = currencyCard(content, y, "Diamonds", "💎", C.cyan)
+local dmCard, dmVal, dmInc = currencyCard(content, y, "Diamonds", "D", C.cyan)
 y = y + 56
 
--- Przyciski Destroy i Reset Stats w jednym rzędzie
+-- Przyciski w rzędzie
 local btnRow = Instance.new("Frame")
 btnRow.BackgroundTransparency = 1
 btnRow.Position = UDim2.new(0, 0, 0, y)
@@ -496,32 +504,6 @@ local rbc = Instance.new("UICorner"); rbc.CornerRadius = UDim.new(0, 6); rbc.Par
 local rbg = Instance.new("UIGradient")
 rbg.Color = ColorSequence.new({ColorSequenceKeypoint.new(0, C.purple), ColorSequenceKeypoint.new(1, C.purpleDim)})
 rbg.Rotation = 90; rbg.Parent = resetBtn
-resetBtn.MouseButton1Click:Connect(function()
-    -- Reset akumulowanych przyrostów
-    for name in pairs(accumulatedGain) do
-        accumulatedGain[name] = 0
-    end
-    -- Reset liczników kliknięć i sesji
-    totalClicks = 0
-    clickTimestamps = {}
-    sessionStart = nil
-    sessionTime = 0
-    autoClicking = false
-    updateStatus()
-    -- Reset przyrostów w UI
-    fcInc.Text = "+0"
-    hcInc.Text = "+0"
-    dmInc.Text = "+0"
-    fcInc.TextColor3 = C.textMuted
-    hcInc.TextColor3 = C.textMuted
-    dmInc.TextColor3 = C.textMuted
-    clicksVal.Text = "0"
-    sessionVal.Text = "0s"
-    cpsVal.Text = "0.0"
-    notify("Stats", "All stats reset", C.purpleLight)
-end)
-resetBtn.MouseEnter:Connect(function() tween(resetBtn, {BackgroundColor3 = C.purpleLight}, 0.15) end)
-resetBtn.MouseLeave:Connect(function() tween(resetBtn, {BackgroundColor3 = C.purple}, 0.15) end)
 
 local destroyBtn = Instance.new("TextButton")
 destroyBtn.BackgroundColor3 = C.red
@@ -534,6 +516,41 @@ destroyBtn.TextColor3 = C.text
 destroyBtn.TextSize = 12
 destroyBtn.Parent = btnRow
 local dbc = Instance.new("UICorner"); dbc.CornerRadius = UDim.new(0, 6); dbc.Parent = destroyBtn
+
+-- ===== PODŁĄCZENIE PRZYCISKÓW (po utworzeniu wszystkich zmiennych) =====
+resetBtn.MouseButton1Click:Connect(function()
+    -- Reset akumulowanych przyrostów
+    for name in pairs(accumulatedGain) do
+        accumulatedGain[name] = 0
+    end
+    for name in pairs(lastValues) do
+        local val = getCurrencyValue(
+            (name == "Fantasy Coins" and "Main.Right.Fantasy Coins") or
+            (name == "Halloween Candy" and "Main.Right.Halloween Candy") or
+            (name == "Diamonds" and "Main.Right.Diamonds") or ""
+        )
+        if val then lastValues[name] = val end
+    end
+    -- Reset liczników
+    totalClicks = 0
+    clickTimestamps = {}
+    sessionStart = nil
+    sessionTime = 0
+    autoClicking = false
+    updateStatus()
+    -- Reset UI
+    fcInc.Text = "+0"
+    hcInc.Text = "+0"
+    dmInc.Text = "+0"
+    fcInc.TextColor3 = C.textMuted
+    hcInc.TextColor3 = C.textMuted
+    dmInc.TextColor3 = C.textMuted
+    clicksVal.Text = "0"
+    sessionVal.Text = "0s"
+    cpsVal.Text = "0.0"
+    notify("Stats", "All stats reset", C.purpleLight)
+end)
+
 destroyBtn.MouseButton1Click:Connect(function()
     running = false
     autoClicking = false
@@ -542,6 +559,12 @@ destroyBtn.MouseButton1Click:Connect(function()
     task.wait(0.5)
     screenGui:Destroy()
 end)
+
+resetBtn.MouseEnter:Connect(function() tween(resetBtn, {BackgroundColor3 = C.purpleLight}, 0.15) end)
+resetBtn.MouseLeave:Connect(function() tween(resetBtn, {BackgroundColor3 = C.purple}, 0.15) end)
+destroyBtn.MouseEnter:Connect(function() tween(destroyBtn, {BackgroundColor3 = Color3.fromRGB(255, 120, 120)}, 0.15) end)
+destroyBtn.MouseLeave:Connect(function() tween(destroyBtn, {BackgroundColor3 = C.red}, 0.15) end)
+
 y = y + 32
 
 -- Click target
@@ -639,9 +662,6 @@ task.spawn(function()
 end)
 
 -- Śledzenie walut z AKUMULACJĄ
-local lastValues = {}
-local accumulatedGain = {}
-
 local function trackCurrency(cfg, valLabel, incLabel)
     local val = getCurrencyValue(cfg.path)
     if val ~= nil then
